@@ -1,0 +1,224 @@
+import { formatDateLabel, formatMoney, normalizeText, parseAmountToken, periodBounds } from "./format";
+import {
+  categoryNameFor,
+  computeBalance,
+  computeSpending,
+  computeSummary,
+  createTransaction,
+  getCategories,
+  getLastTransaction,
+  getRecentTransactions,
+  resolveAccountId,
+  resolveCategoryId,
+  softDeleteTransaction,
+  updateTransaction
+} from "./ledger";
+import { matchCategorySeed } from "./vocab";
+import type {
+  Command,
+  EditLastCommand,
+  LogCommand,
+  RecentCommand,
+  SpentCommand,
+  SummaryCommand,
+  TransactionDoc
+} from "./types";
+
+function signOf(type: TransactionDoc["type"]): string {
+  return type === "income" ? "+" : "-";
+}
+
+export async function executeCommand(
+  uid: string,
+  currency: string,
+  command: Command
+): Promise<string> {
+  switch (command.kind) {
+    case "help":
+      return helpText();
+    case "log":
+      return handleLog(uid, currency, command);
+    case "balance":
+      return handleBalance(uid, currency);
+    case "spent":
+      return handleSpent(uid, currency, command);
+    case "summary":
+      return handleSummary(uid, currency, command);
+    case "recent":
+      return handleRecent(uid, currency, command);
+    case "delete_last":
+      return handleDeleteLast(uid, currency);
+    case "edit_last":
+      return handleEditLast(uid, currency, command);
+    case "unknown":
+    default:
+      return unknownText();
+  }
+}
+
+async function handleLog(uid: string, currency: string, command: LogCommand): Promise<string> {
+  const accountId = await resolveAccountId(uid, command.accountHint);
+  const categoryId = await resolveCategoryId(uid, {
+    categoryId: command.categoryId,
+    categoryToken: command.categoryToken,
+    type: command.type
+  });
+
+  const categoryName = await categoryNameFor(uid, categoryId);
+  const description = command.description || (categoryId ? categoryName : "");
+
+  await createTransaction(uid, {
+    type: command.type,
+    amount: command.amount,
+    accountId,
+    categoryId,
+    description,
+    transactionDate: command.transactionDate
+  });
+
+  const balance = await computeBalance(uid);
+  const heading = command.type === "income" ? "✅ Income logged" : "✅ Expense logged";
+  const noteLine =
+    description && description.toLowerCase() !== categoryName.toLowerCase()
+      ? `\n📝 ${description}`
+      : "";
+
+  return (
+    `${heading}\n` +
+    `${signOf(command.type)}${formatMoney(command.amount, currency)} · ${categoryName}` +
+    noteLine +
+    `\n🗓 ${formatDateLabel(command.transactionDate)}` +
+    `\n💰 Balance: ${formatMoney(balance, currency)}`
+  );
+}
+
+async function handleBalance(uid: string, currency: string): Promise<string> {
+  const balance = await computeBalance(uid);
+  return `💰 Your balance is ${formatMoney(balance, currency)}.`;
+}
+
+async function handleSpent(uid: string, currency: string, command: SpentCommand): Promise<string> {
+  const amount = await computeSpending(uid, {
+    categoryId: command.categoryId,
+    period: command.period,
+    type: "expense"
+  });
+  const { label } = periodBounds(command.period);
+  const categoryName = command.categoryId ? await categoryNameFor(uid, command.categoryId) : null;
+  const scope = categoryName ? ` on ${categoryName}` : "";
+  return `📉 You spent ${formatMoney(amount, currency)}${scope} ${label}.`;
+}
+
+async function handleSummary(
+  uid: string,
+  currency: string,
+  command: SummaryCommand
+): Promise<string> {
+  const summary = await computeSummary(uid, command.period);
+  const { label } = periodBounds(command.period);
+  return (
+    `📊 Summary (${label})\n` +
+    `📈 Income: ${formatMoney(summary.income, currency)}\n` +
+    `📉 Expenses: ${formatMoney(summary.expense, currency)}\n` +
+    `➖ Net: ${formatMoney(summary.net, currency)}\n` +
+    `💰 Balance: ${formatMoney(summary.balance, currency)}`
+  );
+}
+
+async function handleRecent(uid: string, currency: string, command: RecentCommand): Promise<string> {
+  const [transactions, categories] = await Promise.all([
+    getRecentTransactions(uid, command.count),
+    getCategories(uid)
+  ]);
+  if (transactions.length === 0) return "🧾 No transactions yet.";
+
+  const nameById = new Map(categories.map((category) => [category.id, category.name]));
+  const lines = transactions.map((transaction) => {
+    const categoryName = transaction.categoryId
+      ? nameById.get(transaction.categoryId) ?? "Uncategorized"
+      : "Uncategorized";
+    return (
+      `${signOf(transaction.type)}${formatMoney(transaction.amount, currency)} · ` +
+      `${categoryName} · ${formatDateLabel(transaction.transactionDate)}`
+    );
+  });
+
+  return `🧾 Last ${transactions.length}:\n${lines.join("\n")}`;
+}
+
+async function handleDeleteLast(uid: string, currency: string): Promise<string> {
+  const last = await getLastTransaction(uid);
+  if (!last) return "🤷 Nothing to undo.";
+
+  await softDeleteTransaction(uid, last.id);
+  const categoryName = await categoryNameFor(uid, last.categoryId);
+  const balance = await computeBalance(uid);
+  return (
+    `↩️ Removed ${signOf(last.type)}${formatMoney(last.amount, currency)} · ${categoryName}.\n` +
+    `💰 Balance: ${formatMoney(balance, currency)}`
+  );
+}
+
+async function handleEditLast(
+  uid: string,
+  currency: string,
+  command: EditLastCommand
+): Promise<string> {
+  const last = await getLastTransaction(uid);
+  if (!last) return "🤷 Nothing to edit.";
+
+  if (command.field === "amount") {
+    const parsed = parseAmountToken(normalizeText(command.value));
+    if (!parsed || parsed.amount <= 0) return "⚠️ I couldn't read that amount. Try `edit amount 6000`.";
+    await updateTransaction(uid, last.id, { amount: parsed.amount });
+    const balance = await computeBalance(uid);
+    return (
+      `✏️ Updated amount to ${signOf(last.type)}${formatMoney(parsed.amount, currency)}.\n` +
+      `💰 Balance: ${formatMoney(balance, currency)}`
+    );
+  }
+
+  if (command.field === "category") {
+    const seed = matchCategorySeed(normalizeText(command.value));
+    const categoryId = await resolveCategoryId(uid, {
+      categoryId: seed?.id ?? null,
+      categoryToken: command.value,
+      type: last.type
+    });
+    if (!categoryId) {
+      return `⚠️ I don't know the category "${command.value}". Try food, transport, bills…`;
+    }
+    await updateTransaction(uid, last.id, { categoryId });
+    const categoryName = await categoryNameFor(uid, categoryId);
+    return `✏️ Moved last entry to ${categoryName}.`;
+  }
+
+  // note
+  await updateTransaction(uid, last.id, { description: command.value });
+  return `✏️ Updated note to "${command.value}".`;
+}
+
+function helpText(): string {
+  return (
+    "📒 *Monilog* — log money by chat.\n\n" +
+    "*Add:*\n" +
+    "• `-5000 food` (expense)\n" +
+    "• `+50000 salary` (income)\n" +
+    "• `2000 taxi yesterday cash`\n" +
+    "Amounts: `5k` = 5000. Optional date (today, yesterday, 12/07) and account (cash, bank, momo).\n\n" +
+    "*Ask:*\n" +
+    "• `balance`\n" +
+    "• `spent food this month`\n" +
+    "• `summary`\n" +
+    "• `last 5`\n\n" +
+    "*Fix:*\n" +
+    "• `undo` (remove last)\n" +
+    "• `edit amount 6000`\n" +
+    "• `edit category transport`\n\n" +
+    "Type `help` anytime."
+  );
+}
+
+function unknownText(): string {
+  return "🤔 I didn't catch that. Send an amount like `-5000 food`, or type `help`.";
+}
