@@ -153,6 +153,13 @@ export function matchCategorySeed(word: string): CategorySeed | null {
   return CATEGORY_ALIAS_INDEX.get(word) ?? null;
 }
 
+const CATEGORY_SEEDS_BY_ID = new Map(CATEGORY_SEEDS.map((seed) => [seed.id, seed]));
+
+/** Display name for a shared default category id (e.g. "cat-exp-food" → "Food"). */
+export function categorySeedName(categoryId: string): string | null {
+  return CATEGORY_SEEDS_BY_ID.get(categoryId)?.name ?? null;
+}
+
 // Account keyword hints. These map to the two shared default accounts
 // (default-cash, default-bank) or to a broad type the ledger resolves against
 // the user's actual accounts (e.g. a mobile-money account they created).

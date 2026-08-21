@@ -13,7 +13,7 @@ import {
   softDeleteTransaction,
   updateTransaction
 } from "./ledger";
-import { matchCategorySeed } from "./vocab";
+import { categorySeedName, matchCategorySeed } from "./vocab";
 import type {
   Command,
   EditLastCommand,
@@ -134,8 +134,10 @@ async function handleRecent(uid: string, currency: string, command: RecentComman
 
   const nameById = new Map(categories.map((category) => [category.id, category.name]));
   const lines = transactions.map((transaction) => {
-    const categoryName = transaction.categoryId
-      ? nameById.get(transaction.categoryId) ?? "Uncategorized"
+    const { categoryId } = transaction;
+    // User categories first, then the shared default name, then a safe fallback.
+    const categoryName = categoryId
+      ? nameById.get(categoryId) ?? categorySeedName(categoryId) ?? "Uncategorized"
       : "Uncategorized";
     return (
       `${signOf(transaction.type)}${formatMoney(transaction.amount, currency)} · ` +

@@ -1,0 +1,580 @@
+<title>Monilog by WhatsApp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  :root {
+    --bg: #F1F5FA;
+    --surface: #FFFFFF;
+    --surface-2: #F7F9FD;
+    --ink: #18222F;
+    --ink-muted: #5D6B82;
+    --line: #D6DEE9;
+    --line-soft: #E7EDF5;
+    --brand: #183D7C;
+    --brand-soft: #E7EEFA;
+    --teal: #0F8B82;
+    --coral: #C9503A;
+    --bubble-out: #183D7C;
+    --bubble-out-ink: #F3F7FF;
+    --bubble-in: #FFFFFF;
+    --shadow: 0 12px 32px -22px rgba(23, 59, 122, 0.45);
+
+    --step--1: 0.813rem;
+    --step-0: 1rem;
+    --step-1: 1.15rem;
+    --step-3: 2rem;
+    --step-4: 2.75rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #08121F;
+      --surface: #0F1B2E;
+      --surface-2: #152338;
+      --ink: #EFF3F9;
+      --ink-muted: #A2B1C6;
+      --line: #2A3849;
+      --line-soft: #1D2A3D;
+      --brand: #7BA1E8;
+      --brand-soft: #172742;
+      --teal: #2FC0B2;
+      --coral: #F08A73;
+      --bubble-out: #29477E;
+      --bubble-out-ink: #EAF1FF;
+      --bubble-in: #152338;
+      --shadow: 0 12px 32px -22px rgba(0, 0, 0, 0.8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #08121F;
+    --surface: #0F1B2E;
+    --surface-2: #152338;
+    --ink: #EFF3F9;
+    --ink-muted: #A2B1C6;
+    --line: #2A3849;
+    --line-soft: #1D2A3D;
+    --brand: #7BA1E8;
+    --brand-soft: #172742;
+    --teal: #2FC0B2;
+    --coral: #F08A73;
+    --bubble-out: #29477E;
+    --bubble-out-ink: #EAF1FF;
+    --bubble-in: #152338;
+    --shadow: 0 12px 32px -22px rgba(0, 0, 0, 0.8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Poppins", ui-sans-serif, system-ui, sans-serif;
+    font-size: var(--step-0);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  header.masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding-bottom: 1.75rem;
+    border-bottom: 2px solid var(--line);
+  }
+
+  .eyebrow {
+    font-size: var(--step--1);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin: 0;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: var(--step-4);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .lede {
+    margin: 0;
+    max-width: 48ch;
+    font-size: var(--step-1);
+    color: var(--ink-muted);
+  }
+
+  section { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  h2 {
+    margin: 0;
+    font-size: var(--step-3);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+
+  h2 .num {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--step-1);
+    font-weight: 500;
+    color: var(--brand);
+    margin-right: 0.6rem;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: var(--step--1);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  p { margin: 0; max-width: 68ch; }
+  .muted { color: var(--ink-muted); }
+
+  code, .mono {
+    font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+    font-size: 0.9em;
+  }
+
+  p code, li code, td code {
+    background: var(--brand-soft);
+    color: var(--brand);
+    padding: 0.12em 0.4em;
+    border-radius: 0.35rem;
+    white-space: nowrap;
+  }
+
+  /* chat thread */
+  .thread {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 1.15rem;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 1.1rem;
+  }
+
+  .msg {
+    max-width: min(34rem, 88%);
+    padding: 0.6rem 0.85rem;
+    border-radius: 1rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    box-shadow: var(--shadow);
+  }
+
+  .msg.out {
+    align-self: flex-end;
+    background: var(--bubble-out);
+    color: var(--bubble-out-ink);
+    border-bottom-right-radius: 0.3rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.9rem;
+  }
+
+  .msg.in {
+    align-self: flex-start;
+    background: var(--bubble-in);
+    color: var(--ink);
+    border: 1px solid var(--line-soft);
+    border-bottom-left-radius: 0.3rem;
+    white-space: pre-line;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .msg.in b { font-weight: 600; }
+
+  .thread-note {
+    align-self: center;
+    font-size: var(--step--1);
+    color: var(--ink-muted);
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 999px;
+    padding: 0.2rem 0.8rem;
+  }
+
+  /* cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    padding: 1.1rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .card p { font-size: 0.94rem; color: var(--ink-muted); }
+  .card ul { margin: 0; padding-left: 1.1rem; font-size: 0.94rem; color: var(--ink-muted); }
+  .card li { margin-bottom: 0.25rem; }
+
+  /* tables */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--surface);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.94rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+
+  th {
+    font-size: var(--step--1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  td.tokens { color: var(--ink-muted); }
+  td.mono { color: var(--ink); }
+
+  .tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.14rem 0.5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .tag.income { background: color-mix(in srgb, var(--teal) 16%, transparent); color: var(--teal); }
+  .tag.expense { background: color-mix(in srgb, var(--coral) 16%, transparent); color: var(--coral); }
+
+  /* callout */
+  .callout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1.1rem 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--brand);
+    border-radius: 0.9rem;
+  }
+  .callout p { font-size: 0.94rem; color: var(--ink-muted); }
+  .callout strong { color: var(--ink); font-weight: 600; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.5rem;
+    font-size: var(--step--1);
+    color: var(--ink-muted);
+  }
+
+  a { color: var(--brand); }
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Monilog &middot; WhatsApp bot</p>
+    <h1>Every message you can send</h1>
+    <p class="lede">Text your ledger the way you would text a person. Send an amount to log it, ask a question to read it back, fix mistakes in one line. Everything lands in the Monilog apps on the next sync.</p>
+  </header>
+
+  <div class="callout">
+    <p><strong>Before your first message:</strong> the bot only answers numbers linked to a Monilog account. Add your WhatsApp number in the app under <em>Settings &rarr; Profile</em>. An unlinked number gets a welcome message explaining this instead of a reply.</p>
+  </div>
+
+  <section>
+    <h2><span class="num">01</span>Log money</h2>
+    <p class="muted">One message, one transaction. The only required part is the amount &mdash; everything else is optional and can come in any order.</p>
+
+    <div class="thread">
+      <div class="msg out">-5000 food</div>
+      <div class="msg in">✅ Expense logged
+-5,000 FCFA · Food
+🗓 today
+💰 Balance: 128,400 FCFA</div>
+      <div class="msg out">+50000 salary</div>
+      <div class="msg in">✅ Income logged
++50,000 FCFA · Salary
+🗓 today
+💰 Balance: 178,400 FCFA</div>
+      <div class="msg out">2000 taxi yesterday cash</div>
+      <div class="msg in">✅ Expense logged
+-2,000 FCFA · Transport
+🗓 yesterday
+💰 Balance: 176,400 FCFA</div>
+      <div class="msg out">spent 3k on lunch with the team</div>
+      <div class="msg in">✅ Expense logged
+-3,000 FCFA · Food
+📝 lunch with team
+🗓 today
+💰 Balance: 173,400 FCFA</div>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <h3>The amount</h3>
+        <ul>
+          <li><code>5000</code> &mdash; a plain number</li>
+          <li><code>5k</code> = 5 000, <code>2.5k</code> = 2 500</li>
+          <li><code>1m</code> = 1 000 000</li>
+          <li><code>2,5k</code> &mdash; comma decimals work too</li>
+          <li><code>5000f</code>, <code>5000fcfa</code>, <code>5000cfa</code>, <code>5000xaf</code>, <code>5000frs</code> &mdash; the currency word is ignored</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Expense or income?</h3>
+        <p>Decided in this order:</p>
+        <ul>
+          <li>A leading sign &mdash; <code>-5000</code> or <code>+5000</code></li>
+          <li>A verb &mdash; <code>spent</code>, <code>paid</code>, <code>bought</code>, <code>cost</code>, or <code>received</code>, <code>got</code>, <code>earned</code> (and <code>d&eacute;pens&eacute;</code>, <code>pay&eacute;</code>, <code>re&ccedil;u</code>, <code>gagn&eacute;</code>)</li>
+          <li>The category&rsquo;s own type &mdash; <code>salary</code> is income</li>
+          <li>Nothing matched: expense</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The note</h3>
+        <p>Whatever is left after the amount, date, account and category becomes the note. Filler words (<code>on</code>, <code>for</code>, <code>the</code>, <code>de</code>, <code>pour</code>&hellip;) are dropped. With nothing left over, the note is just the category name.</p>
+      </div>
+    </div>
+
+    <h3>Dates you can type</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Write</th><th>Means</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">today &middot; now &middot; aujourdhui &middot; auj</td><td class="tokens">Today</td></tr>
+          <tr><td class="mono">yesterday &middot; hier</td><td class="tokens">Yesterday</td></tr>
+          <tr><td class="mono">monday &hellip; sunday &middot; lundi &hellip; dimanche</td><td class="tokens">The most recent past one &mdash; <code>monday</code> sent on a Monday means <em>last</em> Monday</td></tr>
+          <tr><td class="mono">12/07 &middot; 12-07 &middot; 12.07</td><td class="tokens">Day and month, this year</td></tr>
+          <tr><td class="mono">12/07/2026 &middot; 12/07/26</td><td class="tokens">Day, month, year</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">No date word means right now. Dates are day-first, never month-first.</p>
+
+    <h3>Accounts you can name</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Write</th><th>Goes to</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">cash &middot; espece &middot; especes &middot; liquide</td><td class="tokens">Your cash account</td></tr>
+          <tr><td class="mono">bank &middot; banque &middot; account</td><td class="tokens">Your bank account</td></tr>
+          <tr><td class="mono">momo &middot; mtn &middot; orange &middot; om &middot; wave &middot; wallet</td><td class="tokens">Your mobile money account</td></tr>
+          <tr><td class="mono">any word from an account name</td><td class="tokens">That account &mdash; <code>ecobank</code> finds one called &ldquo;Ecobank Savings&rdquo;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">No account word means your default account.</p>
+
+    <h3>Categories the bot knows</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Category</th><th>Type</th><th>Words that match it</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><b>Salary</b></td><td><span class="tag income">Income</span></td><td class="tokens mono">salary &middot; wage &middot; wages &middot; pay &middot; paycheck &middot; salaire &middot; paie</td></tr>
+          <tr><td><b>Freelance</b></td><td><span class="tag income">Income</span></td><td class="tokens mono">freelance &middot; gig &middot; contract &middot; client</td></tr>
+          <tr><td><b>Business</b></td><td><span class="tag income">Income</span></td><td class="tokens mono">business &middot; sales &middot; sale &middot; profit &middot; revenue &middot; affaires &middot; vente &middot; ventes</td></tr>
+          <tr><td><b>Gift</b></td><td><span class="tag income">Income</span></td><td class="tokens mono">gift &middot; present &middot; donation &middot; cadeau &middot; don</td></tr>
+          <tr><td><b>Food</b></td><td><span class="tag expense">Expense</span></td><td class="tokens mono">food &middot; lunch &middot; dinner &middot; breakfast &middot; meal &middot; groceries &middot; grocery &middot; restaurant &middot; eat &middot; chop &middot; nourriture &middot; repas &middot; manger</td></tr>
+          <tr><td><b>Transport</b></td><td><span class="tag expense">Expense</span></td><td class="tokens mono">transport &middot; taxi &middot; bus &middot; fare &middot; fuel &middot; gas &middot; petrol &middot; uber &middot; moto &middot; bike &middot; essence &middot; carburant</td></tr>
+          <tr><td><b>Bills</b></td><td><span class="tag expense">Expense</span></td><td class="tokens mono">bill &middot; bills &middot; rent &middot; electricity &middot; power &middot; water &middot; internet &middot; wifi &middot; subscription &middot; facture &middot; loyer &middot; eau &middot; electricite</td></tr>
+          <tr><td><b>Shopping</b></td><td><span class="tag expense">Expense</span></td><td class="tokens mono">shopping &middot; clothes &middot; clothing &middot; shoes &middot; achats &middot; vetements &middot; habits</td></tr>
+          <tr><td><b>Health</b></td><td><span class="tag expense">Expense</span></td><td class="tokens mono">health &middot; medicine &middot; medication &middot; hospital &middot; doctor &middot; pharmacy &middot; clinic &middot; sante &middot; medecin &middot; hopital &middot; pharmacie</td></tr>
+          <tr><td><b>Airtime</b></td><td><span class="tag expense">Expense</span></td><td class="tokens mono">airtime &middot; credit &middot; data &middot; recharge &middot; topup &middot; forfait &middot; unites</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">Your own categories work too: a word matching one of their names wins over the defaults, as long as the type lines up. A message with no recognisable category is still logged &mdash; it just lands uncategorised.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>Ask about your money</h2>
+
+    <div class="thread">
+      <div class="msg out">balance</div>
+      <div class="msg in">💰 Your balance is 173,400 FCFA.</div>
+      <div class="msg out">spent food this month</div>
+      <div class="msg in">📉 You spent 34,500 FCFA on Food this month.</div>
+      <div class="msg out">summary</div>
+      <div class="msg in">📊 Summary (this month)
+📈 Income: 250,000 FCFA
+📉 Expenses: 76,600 FCFA
+➖ Net: 173,400 FCFA
+💰 Balance: 173,400 FCFA</div>
+      <div class="msg out">last 5</div>
+      <div class="msg in">🧾 Last 5:
+-3,000 FCFA · Food · today
+-5,000 FCFA · Food · today
+-2,000 FCFA · Transport · yesterday
++50,000 FCFA · Salary · today
+-12,000 FCFA · Bills · 18 Aug 2026</div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Ask</th><th>Also accepts</th><th>You get</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">balance</td>
+            <td class="tokens mono">bal &middot; solde</td>
+            <td class="tokens">Money across all your accounts right now</td>
+          </tr>
+          <tr>
+            <td class="mono">spent food this month</td>
+            <td class="tokens mono">spend &middot; spending &middot; depense &middot; how much&hellip; &middot; combien&hellip;</td>
+            <td class="tokens">Total spent, narrowed to one category if you name one. Leave it out (<code>spent this week</code>) for everything.</td>
+          </tr>
+          <tr>
+            <td class="mono">summary</td>
+            <td class="tokens mono">report &middot; resume &middot; rapport &middot; overview &middot; apercu</td>
+            <td class="tokens">Income, expenses, net and balance for the period</td>
+          </tr>
+          <tr>
+            <td class="mono">last 5</td>
+            <td class="tokens mono">recent &middot; history &middot; historique &middot; list &middot; liste</td>
+            <td class="tokens">Your latest entries &mdash; 5 by default, up to 20 with <code>last 20</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Periods</h3>
+      <p>Add any of these to <code>spent</code> or <code>summary</code>: <code>today</code>, <code>this week</code> / <code>semaine</code>, <code>this month</code> / <code>mois</code>, <code>this year</code> / <code>annee</code>, <code>all</code> / <code>total</code> / <code>tout</code>. Say nothing and you get <strong>this month</strong>. Weeks start on Monday.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>Fix a mistake</h2>
+    <p class="muted">All four act on your <strong>most recent entry</strong>, so send them right after the message you want to fix.</p>
+
+    <div class="thread">
+      <div class="msg out">edit amount 6000</div>
+      <div class="msg in">✏️ Updated amount to -6,000 FCFA.
+💰 Balance: 170,400 FCFA</div>
+      <div class="msg out">edit category transport</div>
+      <div class="msg in">✏️ Moved last entry to Transport.</div>
+      <div class="msg out">edit note dinner with Ada</div>
+      <div class="msg in">✏️ Updated note to "dinner with Ada".</div>
+      <div class="msg out">undo</div>
+      <div class="msg in">↩️ Removed -6,000 FCFA · Transport.
+💰 Balance: 176,400 FCFA</div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Send</th><th>Also accepts</th><th>Does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">undo</td><td class="tokens mono">annuler &middot; delete last &middot; remove last &middot; supprimer &middot; effacer &middot; cancel</td><td class="tokens">Deletes the last entry &mdash; it disappears from the apps on the next sync</td></tr>
+          <tr><td class="mono">edit amount 6000</td><td class="tokens mono">edit last amount 6k &middot; modifier montant&hellip;</td><td class="tokens">Changes the amount and keeps the type</td></tr>
+          <tr><td class="mono">edit category transport</td><td class="tokens mono">edit cat&hellip; &middot; modifier categorie&hellip;</td><td class="tokens">Moves it to another category</td></tr>
+          <tr><td class="mono">edit note team lunch</td><td class="tokens mono">edit description&hellip; &middot; edit memo&hellip; &middot; edit libelle&hellip;</td><td class="tokens">Replaces the note with everything after <code>note</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>Get unstuck</h2>
+    <div class="thread">
+      <div class="msg out">help</div>
+      <div class="msg in">📒 <b>Monilog</b> — log money by chat.
+
+<b>Add:</b>
+• -5000 food (expense)
+• +50000 salary (income)
+• 2000 taxi yesterday cash
+
+<b>Ask:</b> balance · spent food this month · summary · last 5
+<b>Fix:</b> undo · edit amount 6000 · edit category transport</div>
+      <div class="thread-note">a greeting opens the same menu</div>
+      <div class="msg out">hello</div>
+      <div class="msg in">📒 <b>Monilog</b> — log money by chat. …</div>
+    </div>
+    <p class="muted">Any of these opens the menu: <code>help</code>, <code>menu</code>, <code>aide</code>, <code>start</code>, <code>commands</code>, <code>hi</code>, <code>hello</code>, <code>hey</code>, <code>bonjour</code>, <code>salut</code>, <code>?</code>. A message the bot cannot read comes back as <em>&ldquo;🤔 I didn&rsquo;t catch that&rdquo;</em> &mdash; and nothing is logged.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>Good to know</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>One message, one entry</h3>
+        <p>Only the first amount counts. <code>5000 food 2000 taxi</code> logs a single 5 000 expense &mdash; send two messages instead.</p>
+      </div>
+      <div class="card">
+        <h3>Accounts win over categories</h3>
+        <p><code>mtn</code> and <code>orange</code> are read as your mobile money account, not as Airtime. Write <code>2000 airtime mtn</code> to get both.</p>
+      </div>
+      <div class="card">
+        <h3>Categories match one word</h3>
+        <p>Matching happens word by word, so a two-word category needs the word that identifies it &mdash; <code>gym</code> for &ldquo;Gym &amp; Fitness&rdquo;.</p>
+      </div>
+      <div class="card">
+        <h3>&ldquo;spent&rdquo; does two jobs</h3>
+        <p>With an amount it logs (<code>spent 3k lunch</code>). Without one it asks (<code>spent lunch this week</code>).</p>
+      </div>
+      <div class="card">
+        <h3>Accents and capitals free</h3>
+        <p><code>D&eacute;pens&eacute;</code> and <code>depense</code> are the same word to the bot.</p>
+      </div>
+      <div class="card">
+        <h3>It shows up everywhere</h3>
+        <p>Anything logged here appears in the web and mobile apps on the next sync, in your account currency.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Monilog WhatsApp bot &middot; message reference. Send <code>help</code> in the chat for the short version.
+  </footer>
+
+</div>

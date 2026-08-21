@@ -49,6 +49,55 @@ strictly more expensive here. The adapter is kept only as an alternative.
 **Fix** — `undo` (remove last) · `edit amount 6000` · `edit category transport` · `edit note team lunch`
 **Anytime** — `help`
 
+## Running it day-to-day
+
+> First time? Do the one-off **[Setup](#setup)** below first (Firebase key, Meta
+> app, `phone_links`). After that, this is the routine every time you want the
+> bot live locally. You need **two terminals**, both kept open.
+
+**Terminal 1 — the bot**
+
+```powershell
+cd "C:\Users\mbahl\Documents\Projects\Monilog\Monilog - WhatsApp"
+npm run dev
+```
+Wait for `Monilog WhatsApp bot listening on :3001 (provider=meta, signatureCheck=true)`.
+
+**Terminal 2 — the public tunnel**
+
+```powershell
+cd "C:\Users\mbahl\Documents\Projects\Monilog\Monilog - WhatsApp"
+npm run tunnel
+```
+If `cloudflared` isn't found, open a **new** terminal (so PATH refreshes) or use the
+full path: `& "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:3001`.
+
+It prints a line like `https://<random-words>.trycloudflare.com`. Copy it.
+
+**Point Meta at the new URL** — [Meta for Developers](https://developers.facebook.com/apps)
+→ your app → **WhatsApp → Configuration → Webhook → Edit**:
+
+- **Callback URL:** `https://<random-words>.trycloudflare.com/webhook/whatsapp` (don't forget `/webhook/whatsapp`)
+- **Verify token:** the value already in your `.env` (`META_VERIFY_TOKEN`) — unchanged
+- **Verify and save.** `messages` stays subscribed from the first time.
+
+> ⚠️ **The free tunnel URL is different on every `npm run tunnel`**, so you must
+> update the Callback URL each session. To stop re-pasting it, either run a
+> permanent [Cloudflare **named tunnel**](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+> (stable hostname) or [deploy](#deploy) to a host with a fixed URL.
+
+**Test:** from your linked phone, message the test number (e.g. `-5000 food`). To
+stop: `Ctrl+C` in both terminals.
+
+Health check anytime: open `https://<your-url>/health` → `{"status":"ok","provider":"meta"}`.
+
+### Heads-up: the access token expires
+
+The Meta **test** token (`META_ACCESS_TOKEN`) lasts ~24h. If the bot suddenly
+can't send replies, regenerate it under **WhatsApp → API Setup** and update `.env`
+(the bot re-reads it on restart). For anything lasting, switch to a permanent
+**System User** token — see [Setup](#2-meta-whatsapp-cloud-api-default).
+
 ## Setup
 
 ```bash
@@ -82,9 +131,11 @@ comes with a free test number that can message up to 5 recipients.
    number ID**, and a 24-hour access token. Add your own number under
    *"To"* as a recipient so it can receive messages.
 3. Find the **App secret** under **App settings → Basic**.
-4. Expose this service publicly (e.g. `ngrok http 3001`), then under
+4. Expose this service publicly with a tunnel (`npm run tunnel`, using
+   [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/);
+   install once with `winget install Cloudflare.cloudflared`), then under
    **WhatsApp → Configuration** set:
-   - **Callback URL:** `https://<your-url>/webhook/whatsapp`
+   - **Callback URL:** `https://<your-tunnel-url>/webhook/whatsapp`
    - **Verify token:** any string you invent (put the same value in `.env`)
    - Click **Verify and save**, then **subscribe to the `messages` field**.
 5. In `.env`:
@@ -143,11 +194,80 @@ Unlinked senders get a friendly message explaining how to link.
 | --- | --- |
 | `npm run dev` | Run with hot reload (tsx) |
 | `npm start` | Run the service (tsx) |
+| `npm run tunnel` | Expose `:3001` publicly via a Cloudflare quick tunnel |
 | `npm run typecheck` | Type-check with `tsc --noEmit` |
 | `npm test` | Run parser tests (vitest) |
+| `npm run smoke` | End-to-end test against real Firestore (isolated test user, auto-cleanup) |
 
-## Deploy
+## Deploy permanently (Railway)
 
-Any Node host works (Railway, Render, Fly, a VPS, or Vercel). Set the same env
-vars, point the provider webhook at `https://<host>/webhook/whatsapp`, and set
-`PUBLIC_URL` to the deployed origin. `GET /health` returns a JSON status probe.
+Hosting the bot on Railway gives it a **stable URL** and keeps it running without
+your laptop — so you set the Meta Callback URL **once** and testers can use it
+anytime. The Express server runs unchanged; Railway injects `PORT` and the app
+already honors it.
+
+### One prerequisite: a permanent access token
+
+The Meta **test** token expires every ~24h — useless for an always-on bot. Before
+deploying, mint a non-expiring **System User** token:
+
+1. [business.facebook.com/settings](https://business.facebook.com/settings) →
+   **Users → System Users** → add one (role: Admin) if you don't have it.
+2. **Add Assets** → assign your WhatsApp app with full control.
+3. **Generate new token** → pick the app → scopes **`whatsapp_business_messaging`**
+   and **`whatsapp_business_management`** → set expiry **Never** → generate and copy.
+
+Use this value for `META_ACCESS_TOKEN` on Railway (not the 24h test token).
+
+### Deploy from this folder (Railway CLI)
+
+No GitHub repo needed — the CLI uploads this directory (`.railwayignore` keeps
+`node_modules`/`.env` out).
+
+```powershell
+npm i -g @railway/cli
+railway login                 # opens the browser
+cd "C:\Users\mbahl\Documents\Projects\Monilog\Monilog - WhatsApp"
+railway init                  # create a new project (give it a name)
+railway up                    # build + deploy
+railway domain                # generate the public URL, e.g. https://monilog-whatsapp-production.up.railway.app
+```
+
+### Set the environment variables
+
+In the Railway project → **Variables** (the **Raw Editor** lets you paste them all
+at once). Add everything from your `.env` **except `PORT`** — Railway sets `PORT`
+itself, and hard-coding it breaks routing.
+
+```
+WHATSAPP_PROVIDER=meta
+DEFAULT_CURRENCY=XAF
+SKIP_SIGNATURE_CHECK=false
+FIREBASE_PROJECT_ID=...
+FIREBASE_CLIENT_EMAIL=...
+FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n
+META_VERIFY_TOKEN=...
+META_APP_SECRET=...
+META_ACCESS_TOKEN=<the permanent System User token>
+META_PHONE_NUMBER_ID=...
+```
+
+`FIREBASE_PRIVATE_KEY` stays a single line with literal `\n` (the app converts
+them). Redeploy after changing variables: `railway up` (or it redeploys on save).
+
+### Point Meta at the Railway URL — once
+
+In **WhatsApp → Configuration → Webhook**, set the Callback URL to
+`https://<your-app>.up.railway.app/webhook/whatsapp` (verify token unchanged) →
+**Verify and save**. Because this URL is now stable, you never touch it again.
+Confirm with `https://<your-app>.up.railway.app/health`.
+
+> For a public launch (beyond the 5-recipient test number): register your own
+> business phone number under **WhatsApp → API Setup** and complete Meta Business
+> Verification. The bot code doesn't change — only `META_PHONE_NUMBER_ID`.
+
+### Other hosts
+
+Any Node host works (Fly, Render, a VPS). Set the same variables, point the
+webhook at `https://<host>/webhook/whatsapp`, and use `GET /health` as the probe.
+On a platform that doesn't inject `PORT`, set it yourself.

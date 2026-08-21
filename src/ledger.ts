@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { adminDb } from "./firebase";
 import { config } from "./config";
 import { normalizeText, nowIso, periodBounds } from "./format";
-import { matchAccountHint } from "./vocab";
+import { categorySeedName, matchAccountHint } from "./vocab";
 import type {
   AccountDoc,
   CategoryDoc,
@@ -218,5 +218,8 @@ export async function categoryNameFor(uid: string, categoryId: string | null): P
   if (!categoryId) return "Uncategorized";
   const categories = await getCategories(uid);
   const match = categories.find((category) => category.id === categoryId);
-  return match?.name ?? "Uncategorized";
+  if (match) return match.name;
+  // The user's categories may not be synced yet; fall back to the shared default
+  // name the bot knows for this id before giving up.
+  return categorySeedName(categoryId) ?? "Uncategorized";
 }

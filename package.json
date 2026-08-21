@@ -5,24 +5,26 @@
   "description": "WhatsApp chatbot for Monilog — rule-based transaction logging, querying, and editing over WhatsApp, writing into the shared Firestore ledger.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "tunnel": "cloudflared tunnel --url http://localhost:3001",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "tsx scripts/smoke.ts",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "firebase-admin": "^13.0.2"
+    "firebase-admin": "^13.0.2",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
   }
