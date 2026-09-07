@@ -3,6 +3,7 @@ import {
   categoryNameFor,
   computeBalance,
   computeSpending,
+  computeSummaries,
   computeSummary,
   createTransaction,
   getCategories,
@@ -13,11 +14,13 @@ import {
   softDeleteTransaction,
   updateTransaction
 } from "./ledger";
+import type { PeriodSummary } from "./ledger";
 import { categorySeedName, matchCategorySeed } from "./vocab";
 import type {
   Command,
   EditLastCommand,
   LogCommand,
+  Period,
   RecentCommand,
   SpentCommand,
   SummaryCommand,
@@ -109,19 +112,51 @@ async function handleSpent(uid: string, currency: string, command: SpentCommand)
   return `📉 You spent ${formatMoney(amount, currency)}${scope} ${label}.`;
 }
 
+/** Periods a bare `summary` reports, widest first. */
+const OVERVIEW_PERIODS: Period[] = ["all", "month", "week"];
+
+function summaryLines(summary: PeriodSummary, currency: string): string {
+  return (
+    `📈 Income: ${formatMoney(summary.income, currency)}\n` +
+    `📉 Expenses: ${formatMoney(summary.expense, currency)}\n` +
+    `➖ Net: ${formatMoney(summary.net, currency)}`
+  );
+}
+
+function titleCase(label: string): string {
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 async function handleSummary(
   uid: string,
   currency: string,
   command: SummaryCommand
 ): Promise<string> {
-  const summary = await computeSummary(uid, command.period);
-  const { label } = periodBounds(command.period);
+  // A period the user named is the only one they asked about.
+  if (command.period) {
+    const summary = await computeSummary(uid, command.period);
+    const { label } = periodBounds(command.period);
+    return (
+      `📊 Summary (${label})\n` +
+      `${summaryLines(summary, currency)}\n` +
+      `💰 Balance: ${formatMoney(summary.balance, currency)}`
+    );
+  }
+
+  // A bare `summary` used to report this month alone, which reads as an empty
+  // ledger to anyone whose income landed before the 1st. Show every window.
+  const summaries = await computeSummaries(uid, OVERVIEW_PERIODS);
+  const blocks = OVERVIEW_PERIODS.map((period) => {
+    const summary = summaries.get(period)!;
+    return `*${titleCase(periodBounds(period).label)}*\n${summaryLines(summary, currency)}`;
+  });
+  // Balance is the same whatever the window; take it off any of them.
+  const balance = summaries.get("all")!.balance;
+
   return (
-    `📊 Summary (${label})\n` +
-    `📈 Income: ${formatMoney(summary.income, currency)}\n` +
-    `📉 Expenses: ${formatMoney(summary.expense, currency)}\n` +
-    `➖ Net: ${formatMoney(summary.net, currency)}\n` +
-    `💰 Balance: ${formatMoney(summary.balance, currency)}`
+    `📊 *Summary*\n💰 Balance: ${formatMoney(balance, currency)}\n\n` +
+    `${blocks.join("\n\n")}\n\n` +
+    "_Ask for one window with_ `summary this month`_,_ `summary this week`_,_ `summary today`_._"
   );
 }
 
@@ -200,6 +235,9 @@ async function handleEditLast(
   return `✏️ Updated note to "${command.value}".`;
 }
 
+/** The full message reference on the marketing site, linked from help. */
+const GUIDE_URL = "https://monilog.vercel.app/whatsapp-guide";
+
 function helpText(): string {
   return (
     "📒 *Monilog* — log money by chat.\n\n" +
@@ -211,12 +249,14 @@ function helpText(): string {
     "*Ask:*\n" +
     "• `balance`\n" +
     "• `spent food this month`\n" +
-    "• `summary`\n" +
+    "• `summary` (all time, month, week)\n" +
+    "• `summary this week` for one window\n" +
     "• `last 5`\n\n" +
     "*Fix:*\n" +
     "• `undo` (remove last)\n" +
     "• `edit amount 6000`\n" +
     "• `edit category transport`\n\n" +
+    `Every message you can send: ${GUIDE_URL}\n` +
     "Type `help` anytime."
   );
 }
