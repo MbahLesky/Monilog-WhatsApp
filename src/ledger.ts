@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { adminDb } from "./firebase";
 import { config } from "./config";
 import { normalizeText, nowIso, periodBounds } from "./format";
+import { summarize, withinPeriod, type PeriodSummary } from "./summary";
 import { categorySeedName, matchAccountHint } from "./vocab";
 import type {
   AccountDoc,
@@ -169,11 +170,6 @@ export async function computeBalance(uid: string): Promise<number> {
   return opening + movement;
 }
 
-function withinPeriod(transaction: TransactionDoc, period: Period): boolean {
-  const { start, end } = periodBounds(period);
-  const date = new Date(transaction.transactionDate);
-  return date >= start && date <= end;
-}
 
 export interface SpendingQuery {
   categoryId: string | null;
@@ -191,26 +187,27 @@ export async function computeSpending(uid: string, query: SpendingQuery): Promis
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 }
 
-export interface PeriodSummary {
-  income: number;
-  expense: number;
-  net: number;
-  balance: number;
-}
+export type { PeriodSummary } from "./summary";
 
-export async function computeSummary(uid: string, period: Period): Promise<PeriodSummary> {
+/**
+ * Summaries for several periods off one read. A plain `summary` reports three
+ * windows at once, and fetching the whole ledger once per window would triple
+ * the Firestore reads for identical data.
+ */
+export async function computeSummaries(
+  uid: string,
+  periods: Period[]
+): Promise<Map<Period, PeriodSummary>> {
   const [transactions, balance] = await Promise.all([
     getActiveTransactions(uid),
     computeBalance(uid)
   ]);
-  const inPeriod = transactions.filter((transaction) => withinPeriod(transaction, period));
-  const income = inPeriod
-    .filter((transaction) => transaction.type === "income")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const expense = inPeriod
-    .filter((transaction) => transaction.type === "expense")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  return { income, expense, net: income - expense, balance };
+  return new Map(periods.map((period) => [period, summarize(transactions, period, balance)]));
+}
+
+export async function computeSummary(uid: string, period: Period): Promise<PeriodSummary> {
+  const summaries = await computeSummaries(uid, [period]);
+  return summaries.get(period)!;
 }
 
 /** Look up a category name for display from either the user's set or the seeds. */

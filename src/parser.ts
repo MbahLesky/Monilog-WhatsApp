@@ -1,4 +1,11 @@
-import { detectPeriod, normalizeText, parseAmountToken, parseDateToken, nowIso } from "./format";
+import {
+  detectPeriod,
+  detectPeriodOrNull,
+  normalizeText,
+  parseAmountToken,
+  parseDateToken,
+  nowIso
+} from "./format";
 import type { Command, EditField, TransactionType } from "./types";
 import {
   EXPENSE_KEYWORDS,
@@ -66,7 +73,7 @@ export function parseMessage(rawText: string, now = new Date()): Command {
   if (HELP_WORDS.has(first) || norm === "?") return { kind: "help" };
   if (BALANCE_WORDS.has(first)) return { kind: "balance" };
   if (RECENT_WORDS.has(first) && !SPEND_LEAD_WORDS.has(first)) return parseRecent(tokens);
-  if (SUMMARY_WORDS.has(first)) return { kind: "summary", period: detectPeriod(norm) };
+  if (SUMMARY_WORDS.has(first)) return { kind: "summary", period: detectPeriodOrNull(norm) };
   if (isDeleteLast(tokens, norm)) return { kind: "delete_last" };
   if (EDIT_WORDS.has(first)) return parseEdit(tokens, originalTokens);
 

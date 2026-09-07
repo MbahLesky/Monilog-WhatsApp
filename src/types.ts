@@ -83,7 +83,8 @@ export interface SpentCommand {
 
 export interface SummaryCommand {
   kind: "summary";
-  period: Period;
+  /** null when the message named no period: report all time, month and week. */
+  period: Period | null;
 }
 
 export interface RecentCommand {

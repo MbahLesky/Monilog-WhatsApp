@@ -172,9 +172,17 @@ export interface PeriodBounds {
   label: string;
 }
 
-/** Inclusive-start/exclusive-end bounds for a reporting period. */
+/**
+ * Bounds for a reporting period, both ends inclusive.
+ *
+ * The end is the end of today rather than this instant: an entry the user dated
+ * today is part of today whatever time they ask about it, and the apps write a
+ * transaction date that can easily sit later in the day than the moment a
+ * summary is requested.
+ */
 export function periodBounds(period: Period, now = new Date()): PeriodBounds {
   const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
   switch (period) {
     case "today": {
       const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -220,9 +228,18 @@ const PERIOD_WORDS: Record<string, Period> = {
 };
 
 /** Detect a period phrase inside a lowercased message; defaults to "month". */
-export function detectPeriod(text: string): Period {
+/**
+ * The period the message asked for, or null when it named none. Callers that
+ * need a period regardless use detectPeriod; `summary` uses the null to tell
+ * "summary" (report every window) apart from "summary this month".
+ */
+export function detectPeriodOrNull(text: string): Period | null {
   for (const [phrase, period] of Object.entries(PERIOD_WORDS)) {
     if (text.includes(phrase)) return period;
   }
-  return "month";
+  return null;
+}
+
+export function detectPeriod(text: string): Period {
+  return detectPeriodOrNull(text) ?? "month";
 }
