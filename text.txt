@@ -1,0 +1,37 @@
+# Local secrets — git-ignored. Do NOT commit this file.
+
+# ── Server ────────────────────────────────────────────────────────────────
+PORT=3001
+# Set this to the public HTTPS URL of your tunnel/host once you start ngrok,
+# e.g. https://abc123.ngrok-free.app  (no trailing slash). Used by Twilio only.
+PUBLIC_URL=
+# Keep false so Meta's X-Hub-Signature-256 is verified. Flip to true only if you
+# ever need to bypass signature checks while debugging locally.
+SKIP_SIGNATURE_CHECK=false
+
+# ── Provider ──────────────────────────────────────────────────────────────
+WHATSAPP_PROVIDER=meta
+
+# ── Firebase Admin (STILL NEEDED) ─────────────────────────────────────────
+# Same service account as the web + Flutter apps (project monilog-28535).
+# Firebase console → Project settings → Service accounts → Generate new private
+# key. Paste the three values below (private key as one line with \n escapes),
+# or instead set GOOGLE_APPLICATION_CREDENTIALS to a downloaded key file.
+FIREBASE_PROJECT_ID=monilog-28535
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@monilog-28535.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDPfsxIy2U4GTtP\nylT250by5sibNzfOfiwNVPyeEHzCrTLOlmcKULxx94FlaBSIDfNx1KYS/ooxC7t7\npuOouryQiK4n+gFS57hO82c1E7kTSGVAEA2D2QRGk+WFee6mIOcUMmhDFWV2bp/p\nCnStn8Y5/rFPBhWoavwdfW8sFp3EMJl0uo1FsfS3agrx80MwJ8BVRcLAxQ8fxfCH\nKwls8RpPbDufeSM9rpcx2MFj9LKj897T+rVljexT6bXtDhGptqTxN8cO+9C8Y85G\nDBq0Pc636RTw+F44/Eq2NfaRNaXB4MMEqzMCf6OvLYcxb33cAFkRHHdcOw97pcBe\nnOhQLk59AgMBAAECggEAAXq/uR91MQK4Q4jqU85nr1/OvOpp2D9aFZpLeZA5bGDu\ntOKLEU3FyVbPTrNZ1o+vVs9eCUzq9URfcTX5Y/TUpSxE1xuhsD3OiVRyeEJW0YuW\nDHMuw+wGRGDHyGiAXoAdfmJA44T0X6z4n9CY6X3iiQFZMfqE9wkv/VdGcAkB0CBT\nKM0KBBc2cqOOv6yhzlSaMYURmnBf1OXCzDmUuvLZMyohgRMqdRuAbgWL2pI1FKoq\nouPC97Llx+uga8YAyMComJt657t5xzi161PGz6KoIO85qpA2AaJ1to9amlCp/G9k\nTJG/xaNHvxw4s3evHL1I8jR1XPNxm2cuk6cky2DboQKBgQD4FHC2wyTf5rr3PuNO\nryBPUD1Zn1kDI689jzuvKurzKqhwoh7aCg2CnpaK2Y4NR0PLGptyCcYg9y314vGs\n6uWdV5v+pCNtC/j/OM2u39c7H5D9C447JyZuKSEOnwJgtu+5/aTAGD6vlrYUfpPZ\nDs2eCGeD9QWw/SJYf7KqH2l8YQKBgQDWHqjkdlZ0jy3Ip+cod7r5vS0kvHdBFsfa\nSJAhkgrV2TDTsicHGnBzlQdFFVCz8yXHuQj5TaV1ZGf1abVJFqgJbOT0KFk23fKB\nbcs17Av0piNNkybViMgo5FFJhed6xYdS0/Fg7Z6JNWHn7V3dptQdjHpUsxaZWGrY\n+eTrILJnnQKBgQCq4qmhu1qzQOSZW6CImunOuJ8KFVHjb7lO1lNunkmpp0DQFVzb\nJQGZcFSS4LmRO/3e8j0RmNn560qljeacDlKMx8SU68vbWdvzMtW8GETSXTQqmsMm\nzBkU2RAEWlPw+xK3M5lBGXJU0aQrCeYeJqxMp81mgGmjOTtnas9PkMPBAQKBgQDH\nNwluXoe7tMclLMqORS+KUi9hQZQ20+ontmGbSlSYeJXMMLHNExVTBHIaHWXTt0MM\nWqT1xv9NhJiQpcRMdy7qbg1q+OtgeAm70BpEVhUdj0HDWEjGXZfVK/BRVqty97sb\nHiQzSYG6KRepgJhXtHMf9uaOTX2WOMRYkdAhz28NpQKBgGAa81xdWNiIBnTLMRqd\nVyn4LgTwQCJzWvsw9IjCe9NbQgZQxCyH94w0Dnr2F9NfOaG94CDAmMjKK4Pmo+St\nHWteNMUJ2bc+UMQMwSleNfWq+YmAZXWnCcLKFsdajluEv/+Pj0pSH59LKVYRClfn\nrxD9hQbsgJ2OCq4I7voQd1ff\n-----END PRIVATE KEY-----\n
+# GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
+
+# ── Meta WhatsApp Cloud API ───────────────────────────────────────────────
+# You invent this string; paste the SAME value into the Meta dashboard webhook
+# config ("Verify token"). Generated for you:
+META_VERIFY_TOKEN=55525f2e43630da62716dbf520952235623d185b542fc6ce
+META_APP_SECRET=49521aaf3b4cc8089d79d91caa88ff08
+# META_ACCESS_TOKEN=EAAdPgE202ZBUBSOdWqabmZCq566WHn9e8n09jAesWj4DdsViMMVujdrvGFLr7zRnFCnD02VQoiT3uJ2jNII9BKQs4WkzZBooSeUBxVD5DotZAxuQU3XVJEEWAZAozxJ8KAv5JJZBNsIYPIKEyVZBRVhVncXThQYDkB20PKuI4P1GkzsM7GarXhOBffJ98OU0oKP5frgHdPUpoJESi1gGvjdWADQUR96TM8tVRpIB8Fff9e8gQziDhV72OSjDbq3vtqiNV8JDjRYSsAOpM1ZAJu4MPsQo
+META_ACCESS_TOKEN=EAAdPgE202ZBUBSWEK8DURyyVvuqfaAYAdtQ2hi1iHJTUhJKQ8VwAnZAXjTABr4Ypix6Th7zlKJXpQQHpjC5LNZA5LE4ZAoulq1WU51141AzzDZCxG3SZA31HdbWZALZCnznOPrvRExigZCkOTjtgf2wXNCsZA07JhpXJcfMBrfXgVVHN8hy7Yylozq43hlrihtCXLIfAZDZD
+
+# EAAdPgE202ZBUBST7xcGzoX2BKqZBZAaOJZCncbJbE1SPkC5bp674zZBH7EmV2cGNs0jP16ZAWCIwCp3ZCL4aPipVYZAHoFIvVD5fsfD048xVsJEtIwrZC1Aw0UzynhUQ5Wja6ZBV6yyyHD7H9NDIIWM9Vl4RAAJZAZCcfTauHfS065nVT3M5hWRoAbogPxZBKxHVjVOLu9QZDZD
+META_PHONE_NUMBER_ID=1067720146415592
+
+# ── Formatting ────────────────────────────────────────────────────────────
+DEFAULT_CURRENCY=XAF
