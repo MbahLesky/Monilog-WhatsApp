@@ -1,8 +1,8 @@
 {
-  "name": "monilog-whatsapp",
-  "version": "0.1.0",
+  "name": "moniilog-whatsapp",
+  "version": "0.2.0",
   "private": true,
-  "description": "WhatsApp chatbot for Monilog — rule-based transaction logging, querying, and editing over WhatsApp, writing into the shared Firestore ledger.",
+  "description": "WhatsApp chatbot for Moniilog — rule-based transaction logging, querying, and editing over WhatsApp, writing into the shared Supabase ledger.",
   "type": "module",
   "engines": {
     "node": "20.x"
@@ -17,9 +17,9 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.48.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "firebase-admin": "^13.0.2",
     "tsx": "^4.19.2"
   },
   "devDependencies": {

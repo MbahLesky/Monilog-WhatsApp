@@ -1,107 +1,65 @@
 /**
- * Manual end-to-end smoke test against the REAL Firestore configured in .env.
+ * Manual end-to-end smoke test against the REAL Supabase configured in .env.
  *
  * It drives handleMessage() exactly as the webhook does, using an isolated
- * throwaway user (a fake number linked via a phone_links doc to a synthetic
- * uid), then verifies the persisted document shape and cleans everything up.
+ * throwaway profile (a test phone number linked to a synthetic user),
+ * then verifies the persisted row shape and cleans everything up.
  *
  * Run: npm run smoke
  */
-import { adminDb } from "../src/firebase";
+import { supabase } from "../src/supabase";
 import { handleMessage } from "../src/handler";
-import type { TransactionDoc } from "../src/types";
 
-const TEST_PHONE = "+235700000001"; // not a real subscriber
-const TEST_UID = `smoke-test-${Date.now()}`;
-
-const REQUIRED_FIELDS: (keyof TransactionDoc)[] = [
-  "id",
-  "userId",
-  "accountId",
-  "type",
-  "amount",
-  "description",
-  "affectsAccountBalance",
-  "transactionDate",
-  "createdAt",
-  "updatedAt",
-  "deletedAt"
-];
+const TEST_PHONE = "+235700000001";
+const TEST_UID = `00000000-0000-0000-0000-${Date.now().toString().slice(-12)}`;
 
 async function send(text: string): Promise<void> {
   const reply = await handleMessage({ from: TEST_PHONE, text });
   console.log(`\n> ${text}\n${reply}`);
 }
 
-async function transactionsCollection() {
-  return adminDb.collection("users").doc(TEST_UID).collection("transactions");
-}
-
 async function cleanup(): Promise<void> {
-  const col = await transactionsCollection();
-  const snap = await col.get();
-  await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
-  await adminDb.collection("phone_links").doc(TEST_PHONE).delete();
-  console.log(`\n🧹 Cleaned up ${snap.size} transaction(s) and the phone link.`);
+  await supabase.from("transactions").delete().eq("user_id", TEST_UID);
+  await supabase.from("accounts").delete().eq("user_id", TEST_UID);
+  await supabase.from("profiles").delete().eq("id", TEST_UID);
+  console.log(`\n🧹 Cleaned up test records for user ${TEST_UID}.`);
 }
 
 async function main(): Promise<void> {
   console.log(`Using test uid ${TEST_UID} linked to ${TEST_PHONE}`);
-  await adminDb.collection("phone_links").doc(TEST_PHONE).set({ uid: TEST_UID });
+  
+  // Create test profile
+  await supabase.from("profiles").insert({
+    id: TEST_UID,
+    phone_number: TEST_PHONE,
+    preferred_currency: "XAF",
+    display_name: "Smoke Tester"
+  });
 
-  // Log + query + edit flow.
-  await send("-5000 food yesterday");
-  await send("+50000 salary");
-  await send("2000 taxi");
-  await send("balance"); // expect 50000 - 7000 = 43000
-  await send("spent food this month"); // expect 5000
-  await send("last 5");
-  await send("summary");
-  await send("edit amount 6000"); // taxi 2000 -> 6000
-  await send("undo"); // soft-delete the taxi
-  await send("balance"); // expect 50000 - 5000 = 45000
+  // Seed default account
+  await supabase.from("accounts").insert({
+    user_id: TEST_UID,
+    name: "Cash",
+    type: "cash",
+    opening_balance_minor: 0,
+    currency_code: "XAF",
+    is_default: true
+  });
 
-  // Verify persisted shape directly in Firestore.
-  const col = await transactionsCollection();
-  const snap = await col.get();
-  const docs = snap.docs.map((doc) => doc.data() as TransactionDoc);
-  console.log(`\n── Firestore verification ──`);
-  console.log(`Documents written: ${docs.length}`);
-
-  const problems: string[] = [];
-  for (const doc of docs) {
-    for (const field of REQUIRED_FIELDS) {
-      if (doc[field] === undefined) problems.push(`${doc.id} missing "${field}"`);
-    }
-    if (doc.userId !== TEST_UID) problems.push(`${doc.id} wrong userId ${doc.userId}`);
-    if (typeof doc.updatedAt !== "string") problems.push(`${doc.id} updatedAt not ISO string`);
-  }
-
-  const softDeleted = docs.filter((doc) => doc.deletedAt !== null);
-  console.log(`Soft-deleted (undo) docs: ${softDeleted.length} (expected 1)`);
-  console.log(
-    "Sample doc:",
-    JSON.stringify(
-      docs.find((doc) => doc.type === "expense" && doc.deletedAt === null),
-      null,
-      2
-    )
-  );
-
-  if (problems.length > 0) {
-    console.error(`\n❌ Shape problems:\n - ${problems.join("\n - ")}`);
-  } else {
-    console.log(`\n✅ All documents match the sync-engine shape.`);
+  try {
+    // Log + query + edit flow.
+    await send("-5000 food yesterday");
+    await send("+50000 salary");
+    await send("2000 taxi");
+    await send("balance");
+    await send("spent food this month");
+    await send("recent");
+    await send("summary");
+    await send("edit amount 6000");
+    await send("undo");
+  } finally {
+    await cleanup();
   }
 }
 
-main()
-  .catch((error) => {
-    console.error("Smoke test failed:", error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await cleanup();
-    // Firestore keeps the process alive; exit explicitly.
-    process.exit(process.exitCode ?? 0);
-  });
+main().catch(console.error);

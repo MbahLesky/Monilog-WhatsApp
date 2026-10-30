@@ -1,4 +1,4 @@
-import { adminAuth, adminDb } from "./firebase";
+import { supabase } from "./supabase";
 
 /** Normalize an inbound sender to E.164 (with a leading "+"). */
 export function toE164(raw: string): string {
@@ -7,37 +7,68 @@ export function toE164(raw: string): string {
 }
 
 /**
- * Map a WhatsApp-verified phone number to a Monilog (Firebase) user id.
- *
- * 1. Firebase Auth is the primary source — a user who added their phone to their
- *    account is matched automatically.
- * 2. A `phone_links/{e164}` document ({ uid }) is a fallback so a number can be
- *    linked even before phone auth is enabled in the apps.
- *
- * Returns null when the number is not linked to any account.
+ * Map a WhatsApp sender's phone number to a Moniilog user id.
+ * Looks up public.profiles where phone_number matches E.164.
+ * Returns null if the number is not linked.
  */
 export async function resolveUid(e164: string): Promise<string | null> {
   try {
-    const user = await adminAuth.getUserByPhoneNumber(e164);
-    return user.uid;
-  } catch (error) {
-    // auth/user-not-found is expected for unlinked numbers; anything else is a
-    // real failure worth surfacing in logs but still falling through to the map.
-    if (!isUserNotFound(error)) {
-      console.error("getUserByPhoneNumber failed", error);
-    }
-  }
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("phone_number", e164)
+      .maybeSingle();
 
-  const snap = await adminDb.collection("phone_links").doc(e164).get();
-  const data = snap.data() as { uid?: string } | undefined;
-  return data?.uid ?? null;
+    if (error) {
+      console.error("resolveUid query failed:", error);
+      return null;
+    }
+
+    return data?.id ?? null;
+  } catch (error) {
+    console.error("resolveUid exception:", error);
+    return null;
+  }
 }
 
-function isUserNotFound(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code: string }).code === "auth/user-not-found"
-  );
+/**
+ * Redeems a 6-digit WhatsApp linking code generated in the Moniilog app.
+ */
+export async function linkPhoneNumberWithCode(
+  code: string,
+  e164: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const { data, error } = await supabase.rpc("redeem_phone_link_code", {
+      p_code: code.trim(),
+      p_phone_number: e164
+    });
+
+    if (error) {
+      console.error("redeem_phone_link_code RPC failed:", error);
+      return { success: false, message: "⚠️ Could not link account. Please try again." };
+    }
+
+    if (data?.status === "ok") {
+      return {
+        success: true,
+        message: "✅ Success! Your WhatsApp number is now linked to your Moniilog account. You can now log transactions like `-5000 food` or send `balance`."
+      };
+    }
+
+    if (data?.status === "expired") {
+      return {
+        success: false,
+        message: "⚠️ That link code has expired. Please generate a fresh code in the Moniilog app (Settings → Link WhatsApp)."
+      };
+    }
+
+    return {
+      success: false,
+      message: "⚠️ Invalid link code. Check the 6-digit code in the Moniilog app (Settings → Link WhatsApp)."
+    };
+  } catch (error) {
+    console.error("linkPhoneNumberWithCode error:", error);
+    return { success: false, message: "⚠️ Could not link account at this time." };
+  }
 }

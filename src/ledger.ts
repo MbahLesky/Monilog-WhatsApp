@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { adminDb } from "./firebase";
+import { supabase } from "./supabase";
 import { config } from "./config";
 import { normalizeText, nowIso, periodBounds } from "./format";
 import { categorySeedName, matchAccountHint } from "./vocab";
@@ -7,47 +6,63 @@ import type {
   AccountDoc,
   CategoryDoc,
   Period,
-  SettingsDoc,
   TransactionDoc,
   TransactionType
 } from "./types";
 
-// Firestore layout mirrors the web sync engine: users/{uid}/{entity}/{id}, with
-// camelCase fields and ISO-string timestamps. Writing here syncs straight into
-// the user's local ledger on next pull.
-const SETTINGS_ROW_ID = "app-settings";
-const DEFAULT_CASH_ACCOUNT_ID = "default-cash";
-
-function userCollection(uid: string, entity: string) {
-  return adminDb.collection("users").doc(uid).collection(entity);
-}
-
-function isActive(record: { deletedAt?: string | null }): boolean {
-  return !record.deletedAt;
-}
-
 export async function getCurrency(uid: string): Promise<string> {
-  const snap = await userCollection(uid, "settings").doc(SETTINGS_ROW_ID).get();
-  const settings = snap.data() as SettingsDoc | undefined;
-  return settings?.currencyCode ?? config.defaultCurrency;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("preferred_currency")
+    .eq("id", uid)
+    .maybeSingle();
+
+  if (error || !data) {
+    return config.defaultCurrency;
+  }
+
+  return data.preferred_currency ?? config.defaultCurrency;
 }
 
 export async function getAccounts(uid: string): Promise<AccountDoc[]> {
-  const snap = await userCollection(uid, "accounts").get();
-  return snap.docs.map((doc) => doc.data() as AccountDoc).filter(isActive);
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("id, name, type, opening_balance_minor, is_default, display_order, deleted_at")
+    .eq("user_id", uid)
+    .is("deleted_at", null)
+    .order("display_order", { ascending: true });
+
+  if (error || !data) return [];
+
+  return data.map((row) => ({
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    openingBalance: Number(row.opening_balance_minor || 0) / 100,
+    isDefault: row.is_default,
+    displayOrder: row.display_order,
+    deletedAt: row.deleted_at
+  }));
 }
 
 export async function getCategories(uid: string): Promise<CategoryDoc[]> {
-  const snap = await userCollection(uid, "categories").get();
-  return snap.docs.map((doc) => doc.data() as CategoryDoc).filter(isActive);
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id, name, type, is_default, deleted_at")
+    .eq("user_id", uid)
+    .is("deleted_at", null);
+
+  if (error || !data) return [];
+
+  return data.map((row) => ({
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    isDefault: row.is_default,
+    deletedAt: row.deleted_at
+  }));
 }
 
-export async function getActiveTransactions(uid: string): Promise<TransactionDoc[]> {
-  const snap = await userCollection(uid, "transactions").get();
-  return snap.docs.map((doc) => doc.data() as TransactionDoc).filter(isActive);
-}
-
-/** Resolve an account hint (or nothing) to a concrete account id to write. */
 export async function resolveAccountId(uid: string, hint: string | null): Promise<string> {
   const accounts = await getAccounts(uid);
 
@@ -57,37 +72,54 @@ export async function resolveAccountId(uid: string, hint: string | null): Promis
     if (byName) return byName.id;
 
     const accountHint = matchAccountHint(normalizedHint);
-    if (accountHint) {
-      if (accountHint.accountType) {
-        const byType = accounts.find((account) => account.type === accountHint.accountType);
-        if (byType) return byType.id;
-      }
-      if (accountHint.defaultAccountId) return accountHint.defaultAccountId;
+    if (accountHint?.accountType) {
+      const byType = accounts.find((account) => account.type === accountHint.accountType);
+      if (byType) return byType.id;
     }
   }
 
   const preferred = accounts.find((account) => account.isDefault) ?? accounts[0];
-  return preferred?.id ?? DEFAULT_CASH_ACCOUNT_ID;
+  if (preferred) return preferred.id;
+
+  // Fallback: create default cash account if none exists
+  const { data: newAccount } = await supabase
+    .from("accounts")
+    .insert({
+      user_id: uid,
+      preset_key: "cash",
+      name: "Cash",
+      type: "cash",
+      opening_balance_minor: 0,
+      currency_code: config.defaultCurrency,
+      is_default: true,
+      display_order: 0
+    })
+    .select("id")
+    .single();
+
+  return newAccount?.id ?? "";
 }
 
-/**
- * Resolve the category to store. Prefer a user category (custom or default) whose
- * name matches the typed word and shares the transaction type; otherwise fall back
- * to the shared default id the parser matched.
- */
 export async function resolveCategoryId(
   uid: string,
   input: { categoryId: string | null; categoryToken: string | null; type: TransactionType }
 ): Promise<string | null> {
+  const categories = await getCategories(uid);
+
   if (input.categoryToken) {
-    const categories = await getCategories(uid);
     const token = normalizeText(input.categoryToken);
     const match = categories.find(
       (category) => category.type === input.type && normalizeText(category.name).includes(token)
     );
     if (match) return match.id;
   }
-  return input.categoryId;
+
+  if (input.categoryId) {
+    const match = categories.find((c) => c.id === input.categoryId);
+    if (match) return match.id;
+  }
+
+  return null;
 }
 
 export interface CreateTransactionInput {
@@ -103,45 +135,109 @@ export async function createTransaction(
   uid: string,
   input: CreateTransactionInput
 ): Promise<TransactionDoc> {
-  const timestamp = nowIso();
-  const transaction: TransactionDoc = {
-    id: `txn_${randomUUID()}`,
-    userId: uid,
-    accountId: input.accountId,
-    categoryId: input.categoryId,
-    type: input.type,
-    amount: input.amount,
-    description: input.description,
-    affectsAccountBalance: true,
-    transactionDate: input.transactionDate,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    deletedAt: null
-  };
+  const amountMinor = Math.round(input.amount * 100);
 
-  await userCollection(uid, "transactions").doc(transaction.id).set(transaction, { merge: true });
-  return transaction;
+  const { data, error } = await supabase
+    .from("transactions")
+    .insert({
+      user_id: uid,
+      account_id: input.accountId,
+      category_id: input.categoryId || null,
+      type: input.type,
+      amount_minor: amountMinor,
+      description: input.description,
+      affects_account_balance: true,
+      transaction_date: input.transactionDate
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(`Failed to create transaction: ${error?.message}`);
+  }
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    accountId: data.account_id,
+    categoryId: data.category_id,
+    type: data.type,
+    amount: Number(data.amount_minor) / 100,
+    description: data.description,
+    affectsAccountBalance: data.affects_account_balance,
+    transactionDate: data.transaction_date,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    deletedAt: data.deleted_at
+  };
 }
 
-/** The most recently created active transaction, used by undo/edit. */
 export async function getLastTransaction(uid: string): Promise<TransactionDoc | null> {
-  const transactions = await getActiveTransactions(uid);
-  if (transactions.length === 0) return null;
-  return transactions.sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", uid)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    accountId: data.account_id,
+    categoryId: data.category_id,
+    type: data.type,
+    amount: Number(data.amount_minor) / 100,
+    description: data.description,
+    affectsAccountBalance: data.affects_account_balance,
+    transactionDate: data.transaction_date,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    deletedAt: data.deleted_at
+  };
 }
 
 export async function getRecentTransactions(uid: string, count: number): Promise<TransactionDoc[]> {
-  const transactions = await getActiveTransactions(uid);
-  return transactions
-    .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
-    .slice(0, count);
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", uid)
+    .is("deleted_at", null)
+    .order("transaction_date", { ascending: false })
+    .limit(count);
+
+  if (error || !data) return [];
+
+  return data.map((t) => ({
+    id: t.id,
+    userId: t.user_id,
+    accountId: t.account_id,
+    categoryId: t.category_id,
+    type: t.type,
+    amount: Number(t.amount_minor) / 100,
+    description: t.description,
+    affectsAccountBalance: t.affects_account_balance,
+    transactionDate: t.transaction_date,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+    deletedAt: t.deleted_at
+  }));
 }
 
 export async function softDeleteTransaction(uid: string, id: string): Promise<void> {
   const timestamp = nowIso();
-  await userCollection(uid, "transactions")
-    .doc(id)
-    .set({ deletedAt: timestamp, updatedAt: timestamp }, { merge: true });
+  const { error } = await supabase
+    .from("transactions")
+    .update({ deleted_at: timestamp, updated_at: timestamp })
+    .eq("id", id)
+    .eq("user_id", uid);
+
+  if (error) {
+    throw new Error(`Failed to delete transaction: ${error.message}`);
+  }
 }
 
 export async function updateTransaction(
@@ -149,30 +245,59 @@ export async function updateTransaction(
   id: string,
   patch: Partial<Pick<TransactionDoc, "amount" | "categoryId" | "description">>
 ): Promise<void> {
-  await userCollection(uid, "transactions")
-    .doc(id)
-    .set({ ...patch, updatedAt: nowIso() }, { merge: true });
-}
+  const updatePayload: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.amount !== undefined) updatePayload.amount_minor = Math.round(patch.amount * 100);
+  if (patch.categoryId !== undefined) updatePayload.category_id = patch.categoryId;
+  if (patch.description !== undefined) updatePayload.description = patch.description;
 
-function balanceContribution(transaction: TransactionDoc): number {
-  if (transaction.affectsAccountBalance === false) return 0;
-  return transaction.type === "income" ? transaction.amount : -transaction.amount;
+  const { error } = await supabase
+    .from("transactions")
+    .update(updatePayload)
+    .eq("id", id)
+    .eq("user_id", uid);
+
+  if (error) {
+    throw new Error(`Failed to update transaction: ${error.message}`);
+  }
 }
 
 export async function computeBalance(uid: string): Promise<number> {
-  const [accounts, transactions] = await Promise.all([
-    getAccounts(uid),
-    getActiveTransactions(uid)
+  const [accountsRes, txRes, transfersRes] = await Promise.all([
+    supabase
+      .from("accounts")
+      .select("opening_balance_minor")
+      .eq("user_id", uid)
+      .is("deleted_at", null),
+    supabase
+      .from("transactions")
+      .select("type, amount_minor, affects_account_balance")
+      .eq("user_id", uid)
+      .is("deleted_at", null),
+    supabase
+      .from("transfers")
+      .select("source_fee_minor, destination_fee_minor")
+      .eq("user_id", uid)
+      .is("deleted_at", null)
   ]);
-  const opening = accounts.reduce((sum, account) => sum + (account.openingBalance ?? 0), 0);
-  const movement = transactions.reduce((sum, transaction) => sum + balanceContribution(transaction), 0);
-  return opening + movement;
-}
 
-function withinPeriod(transaction: TransactionDoc, period: Period): boolean {
-  const { start, end } = periodBounds(period);
-  const date = new Date(transaction.transactionDate);
-  return date >= start && date <= end;
+  const openingMinor = (accountsRes.data ?? []).reduce(
+    (sum, acc) => sum + BigInt(acc.opening_balance_minor || 0),
+    0n
+  );
+
+  const txMovementMinor = (txRes.data ?? []).reduce((sum, tx) => {
+    if (tx.affects_account_balance === false) return sum;
+    const amt = BigInt(tx.amount_minor || 0);
+    return tx.type === "income" ? sum + amt : sum - amt;
+  }, 0n);
+
+  const feesMinor = (transfersRes.data ?? []).reduce(
+    (sum, t) => sum + BigInt(t.source_fee_minor || 0) + BigInt(t.destination_fee_minor || 0),
+    0n
+  );
+
+  const totalMinor = openingMinor + txMovementMinor - feesMinor;
+  return Number(totalMinor) / 100;
 }
 
 export interface SpendingQuery {
@@ -182,13 +307,25 @@ export interface SpendingQuery {
 }
 
 export async function computeSpending(uid: string, query: SpendingQuery): Promise<number> {
-  const type = query.type ?? "expense";
-  const transactions = await getActiveTransactions(uid);
-  return transactions
-    .filter((transaction) => transaction.type === type)
-    .filter((transaction) => (query.categoryId ? transaction.categoryId === query.categoryId : true))
-    .filter((transaction) => withinPeriod(transaction, query.period))
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const { start, end } = periodBounds(query.period);
+  let q = supabase
+    .from("transactions")
+    .select("amount_minor")
+    .eq("user_id", uid)
+    .eq("type", query.type ?? "expense")
+    .is("deleted_at", null)
+    .gte("transaction_date", start.toISOString())
+    .lte("transaction_date", end.toISOString());
+
+  if (query.categoryId) {
+    q = q.eq("category_id", query.categoryId);
+  }
+
+  const { data, error } = await q;
+  if (error || !data) return 0;
+
+  const sumMinor = data.reduce((acc, row) => acc + BigInt(row.amount_minor || 0), 0n);
+  return Number(sumMinor) / 100;
 }
 
 export interface PeriodSummary {
@@ -199,27 +336,36 @@ export interface PeriodSummary {
 }
 
 export async function computeSummary(uid: string, period: Period): Promise<PeriodSummary> {
-  const [transactions, balance] = await Promise.all([
-    getActiveTransactions(uid),
+  const { start, end } = periodBounds(period);
+  const [txRes, balance] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("type, amount_minor")
+      .eq("user_id", uid)
+      .is("deleted_at", null)
+      .gte("transaction_date", start.toISOString())
+      .lte("transaction_date", end.toISOString()),
     computeBalance(uid)
   ]);
-  const inPeriod = transactions.filter((transaction) => withinPeriod(transaction, period));
-  const income = inPeriod
-    .filter((transaction) => transaction.type === "income")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const expense = inPeriod
-    .filter((transaction) => transaction.type === "expense")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+
+  let incomeMinor = 0n;
+  let expenseMinor = 0n;
+
+  for (const row of txRes.data ?? []) {
+    const amt = BigInt(row.amount_minor || 0);
+    if (row.type === "income") incomeMinor += amt;
+    else if (row.type === "expense") expenseMinor += amt;
+  }
+
+  const income = Number(incomeMinor) / 100;
+  const expense = Number(expenseMinor) / 100;
   return { income, expense, net: income - expense, balance };
 }
 
-/** Look up a category name for display from either the user's set or the seeds. */
 export async function categoryNameFor(uid: string, categoryId: string | null): Promise<string> {
   if (!categoryId) return "Uncategorized";
   const categories = await getCategories(uid);
   const match = categories.find((category) => category.id === categoryId);
   if (match) return match.name;
-  // The user's categories may not be synced yet; fall back to the shared default
-  // name the bot knows for this id before giving up.
   return categorySeedName(categoryId) ?? "Uncategorized";
 }

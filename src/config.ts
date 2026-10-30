@@ -30,11 +30,9 @@ export const config = {
   skipSignatureCheck: boolean("SKIP_SIGNATURE_CHECK", false),
   provider: providerName(),
   defaultCurrency: optional("DEFAULT_CURRENCY") ?? "XAF",
-  firebase: {
-    projectId: optional("FIREBASE_PROJECT_ID"),
-    clientEmail: optional("FIREBASE_CLIENT_EMAIL"),
-    // Stored single-line with literal "\n"; restore real newlines for the SDK.
-    privateKey: optional("FIREBASE_PRIVATE_KEY")?.replace(/\\n/g, "\n")
+  supabase: {
+    url: optional("SUPABASE_URL") ?? "",
+    serviceRoleKey: optional("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   },
   twilio: {
     authToken: optional("TWILIO_AUTH_TOKEN"),
