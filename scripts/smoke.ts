@@ -2,8 +2,8 @@
  * Manual end-to-end smoke test against the REAL Supabase configured in .env.
  *
  * It drives handleMessage() exactly as the webhook does, using an isolated
- * throwaway profile (a test phone number linked to a synthetic user),
- * then verifies the persisted row shape and cleans everything up.
+ * throwaway auth user with an E.164 phone number, verifies conversational
+ * transaction logging, queries, edits, and cleans everything up.
  *
  * Run: npm run smoke
  */
@@ -11,7 +11,7 @@ import { supabase } from "../src/supabase";
 import { handleMessage } from "../src/handler";
 
 const TEST_PHONE = "+235700000001";
-const TEST_UID = `00000000-0000-0000-0000-${Date.now().toString().slice(-12)}`;
+let testUid = "";
 
 async function send(text: string): Promise<void> {
   const reply = await handleMessage({ from: TEST_PHONE, text });
@@ -19,26 +19,60 @@ async function send(text: string): Promise<void> {
 }
 
 async function cleanup(): Promise<void> {
-  await supabase.from("transactions").delete().eq("user_id", TEST_UID);
-  await supabase.from("accounts").delete().eq("user_id", TEST_UID);
-  await supabase.from("profiles").delete().eq("id", TEST_UID);
-  console.log(`\n🧹 Cleaned up test records for user ${TEST_UID}.`);
+  if (!testUid) return;
+  await supabase.from("transactions").delete().eq("user_id", testUid);
+  await supabase.from("accounts").delete().eq("user_id", testUid);
+  await supabase.from("profiles").delete().eq("id", testUid);
+  try {
+    await supabase.auth.admin.deleteUser(testUid);
+  } catch {}
+  console.log(`\n🧹 Cleaned up test user ${testUid} (${TEST_PHONE}).`);
 }
 
 async function main(): Promise<void> {
-  console.log(`Using test uid ${TEST_UID} linked to ${TEST_PHONE}`);
+  console.log(`Creating test user for ${TEST_PHONE}...`);
   
-  // Create test profile
-  await supabase.from("profiles").insert({
-    id: TEST_UID,
+  // Clean up any stale user from earlier runs
+  const { data: existingProfiles } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("phone_number", TEST_PHONE);
+  if (existingProfiles && existingProfiles.length > 0) {
+    for (const p of existingProfiles) {
+      await supabase.from("transactions").delete().eq("user_id", p.id);
+      await supabase.from("accounts").delete().eq("user_id", p.id);
+      await supabase.from("profiles").delete().eq("id", p.id);
+      try {
+        await supabase.auth.admin.deleteUser(p.id);
+      } catch {}
+    }
+  }
+
+  // Create real test auth user with verified phone number
+  const { data: userRecord, error: userError } = await supabase.auth.admin.createUser({
+    phone: TEST_PHONE,
+    phone_confirm: true,
+    user_metadata: { preferred_currency: "XAF", display_name: "Smoke Tester" }
+  });
+
+  if (userError || !userRecord?.user) {
+    throw new Error(`Failed to create test auth user: ${userError?.message}`);
+  }
+
+  testUid = userRecord.user.id;
+  console.log(`Auth user created: ${testUid}. Initializing profile and default cash account...`);
+
+  // Ensure profile has phone_number and preferred_currency
+  await supabase.from("profiles").upsert({
+    id: testUid,
     phone_number: TEST_PHONE,
     preferred_currency: "XAF",
     display_name: "Smoke Tester"
   });
 
   // Seed default account
-  await supabase.from("accounts").insert({
-    user_id: TEST_UID,
+  await supabase.from("accounts").upsert({
+    user_id: testUid,
     name: "Cash",
     type: "cash",
     opening_balance_minor: 0,
