@@ -5,7 +5,7 @@
   "description": "WhatsApp chatbot for Moniilog — rule-based transaction logging, querying, and editing over WhatsApp, writing into the shared Supabase ledger.",
   "type": "module",
   "engines": {
-    "node": "20.x"
+    "node": ">=20.x"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
