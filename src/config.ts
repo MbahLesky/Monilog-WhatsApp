@@ -30,6 +30,7 @@ export const config = {
   skipSignatureCheck: boolean("SKIP_SIGNATURE_CHECK", false),
   provider: providerName(),
   defaultCurrency: optional("DEFAULT_CURRENCY") ?? "XAF",
+  geminiApiKey: optional("GEMINI_API_KEY"),
   supabase: {
     url: optional("SUPABASE_URL") ?? "",
     serviceRoleKey: optional("SUPABASE_SERVICE_ROLE_KEY") ?? ""
