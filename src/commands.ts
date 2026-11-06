@@ -38,6 +38,8 @@ export async function executeCommand(
       return helpText();
     case "log":
       return handleLog(uid, currency, command);
+    case "batch_log":
+      return handleBatchLog(uid, currency, command.commands);
     case "balance":
       return handleBalance(uid, currency);
     case "spent":
@@ -89,6 +91,48 @@ async function handleLog(uid: string, currency: string, command: LogCommand): Pr
     noteLine +
     `\n🗓 ${formatDateLabel(command.transactionDate)}` +
     `\n💰 Balance: ${formatMoney(balance, currency)}`
+  );
+}
+
+async function handleBatchLog(
+  uid: string,
+  currency: string,
+  commands: LogCommand[]
+): Promise<string> {
+  const lines: string[] = [];
+  for (const command of commands) {
+    const accountId = await resolveAccountId(uid, command.accountHint);
+    const categoryId = await resolveCategoryId(uid, {
+      categoryId: command.categoryId,
+      categoryToken: command.categoryToken,
+      type: command.type
+    });
+    const categoryName = await categoryNameFor(uid, categoryId);
+    const description = command.description || (categoryId ? categoryName : "");
+
+    await createTransaction(uid, {
+      type: command.type,
+      amount: command.amount,
+      accountId,
+      categoryId,
+      description,
+      transactionDate: command.transactionDate
+    });
+
+    const icon = command.type === "income" ? "🟢" : "🔴";
+    const sign = command.type === "income" ? "+" : "-";
+    const note =
+      description && description.toLowerCase() !== categoryName.toLowerCase()
+        ? ` (${description})`
+        : "";
+    lines.push(`${icon} ${sign}${formatMoney(command.amount, currency)} · ${categoryName}${note}`);
+  }
+
+  const balance = await computeBalance(uid);
+  return (
+    `✅ *${commands.length} Transactions Saved!*\n\n` +
+    lines.map((l, i) => `${i + 1}. ${l}`).join("\n") +
+    `\n\n💰 Balance: ${formatMoney(balance, currency)}`
   );
 }
 

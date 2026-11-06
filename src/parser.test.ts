@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMessage } from "./parser";
+import { cleanLinePrefix, parseMessage, parseMultiLineMessage } from "./parser";
 import type { LogCommand } from "./types";
 
 const NOW = new Date(2026, 6, 19, 10, 0, 0); // 19 Jul 2026, local
@@ -141,5 +141,93 @@ describe("parseMessage — commands", () => {
 
   it("falls back to unknown when there is no amount or command", () => {
     expect(parseMessage("just some random text").kind).toBe("unknown");
+  });
+});
+
+describe("cleanLinePrefix", () => {
+  it("strips numbered prefixes like 1. and 2)", () => {
+    expect(cleanLinePrefix("1. -5000 food")).toBe("-5000 food");
+    expect(cleanLinePrefix("2) 2000 taxi")).toBe("2000 taxi");
+  });
+
+  it("strips bullet points like * and •", () => {
+    expect(cleanLinePrefix("* -1500 lunch")).toBe("-1500 lunch");
+    expect(cleanLinePrefix("• 3000 fuel")).toBe("3000 fuel");
+  });
+
+  it("strips dash bullets with space but preserves negative amounts", () => {
+    expect(cleanLinePrefix("- 5000 groceries")).toBe("5000 groceries");
+    expect(cleanLinePrefix("-5000 groceries")).toBe("-5000 groceries");
+  });
+
+  it("does not corrupt decimal numbers like 2.5k", () => {
+    expect(cleanLinePrefix("2.5k transport")).toBe("2.5k transport");
+  });
+});
+
+describe("parseMultiLineMessage", () => {
+  it("parses multiple transaction lines in one message", () => {
+    const text = "-5000 food\n-2000 taxi\n+50000 salary";
+    const result = parseMultiLineMessage(text, NOW);
+    expect(result.kind).toBe("batch_log");
+    if (result.kind !== "batch_log") return;
+
+    expect(result.commands).toHaveLength(3);
+    expect(result.commands[0]!.amount).toBe(5000);
+    expect(result.commands[0]!.type).toBe("expense");
+    expect(result.commands[0]!.categoryId).toBe("cat-exp-food");
+
+    expect(result.commands[1]!.amount).toBe(2000);
+    expect(result.commands[1]!.type).toBe("expense");
+    expect(result.commands[1]!.categoryId).toBe("cat-exp-transport");
+
+    expect(result.commands[2]!.amount).toBe(50000);
+    expect(result.commands[2]!.type).toBe("income");
+    expect(result.commands[2]!.categoryId).toBe("cat-inc-salary");
+  });
+
+  it("handles numbered and bulleted lists gracefully", () => {
+    const text = "1. -5000 food\n2. -2500 fuel\n3. +10000 refund";
+    const result = parseMultiLineMessage(text, NOW);
+    expect(result.kind).toBe("batch_log");
+    if (result.kind !== "batch_log") return;
+    expect(result.commands).toHaveLength(3);
+    expect(result.commands[0]!.amount).toBe(5000);
+    expect(result.commands[1]!.amount).toBe(2500);
+    expect(result.commands[2]!.amount).toBe(10000);
+  });
+
+  it("ignores blank lines and comment headers starting with # or //", () => {
+    const text = "# Today's spending\n-1200 snacks\n\n// evening\n-3000 dinner\n";
+    const result = parseMultiLineMessage(text, NOW);
+    expect(result.kind).toBe("batch_log");
+    if (result.kind !== "batch_log") return;
+    expect(result.commands).toHaveLength(2);
+    expect(result.commands[0]!.amount).toBe(1200);
+    expect(result.commands[1]!.amount).toBe(3000);
+  });
+
+  it("returns error detailing which lines failed validation", () => {
+    const text = "-5000 food\nbought shoes without price\n-2000 taxi";
+    const result = parseMultiLineMessage(text, NOW);
+    expect(result.kind).toBe("error");
+    if (result.kind !== "error") return;
+    expect(result.message).toContain("Line 2");
+    expect(result.message).toContain("bought shoes without price");
+  });
+
+  it("wraps single transaction into batch_log for unified confirmation", () => {
+    const result = parseMultiLineMessage("-3500 lunch", NOW);
+    expect(result.kind).toBe("batch_log");
+    if (result.kind !== "batch_log") return;
+    expect(result.commands).toHaveLength(1);
+    expect(result.commands[0]!.amount).toBe(3500);
+  });
+
+  it("delegates single non-log queries directly to command", () => {
+    const result = parseMultiLineMessage("balance", NOW);
+    expect(result.kind).toBe("command");
+    if (result.kind !== "command") return;
+    expect(result.command.kind).toBe("balance");
   });
 });

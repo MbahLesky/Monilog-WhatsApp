@@ -111,8 +111,14 @@ export interface UnknownCommand {
   kind: "unknown";
 }
 
+export interface BatchLogCommand {
+  kind: "batch_log";
+  commands: LogCommand[];
+}
+
 export type Command =
   | LogCommand
+  | BatchLogCommand
   | BalanceCommand
   | SpentCommand
   | SummaryCommand

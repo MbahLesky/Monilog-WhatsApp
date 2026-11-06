@@ -1,5 +1,5 @@
 import { detectPeriod, normalizeText, parseAmountToken, parseDateToken, nowIso } from "./format";
-import type { Command, EditField, TransactionType } from "./types";
+import type { Command, EditField, LogCommand, TransactionType } from "./types";
 import {
   EXPENSE_KEYWORDS,
   INCOME_KEYWORDS,
@@ -54,7 +54,15 @@ const AMOUNT_EDIT_WORDS = new Set(["amount", "montant", "sum"]);
 const CATEGORY_EDIT_WORDS = new Set(["category", "categorie", "cat"]);
 const NOTE_EDIT_WORDS = new Set(["note", "description", "desc", "memo", "libelle", "label"]);
 
-export function parseMessage(rawText: string, now = new Date()): Command {
+/**
+ * Strips leading list numbering (1., 1)), bullet points (*, •), or dash bullets (- ).
+ * A negative amount without space (e.g. -5000) is untouched.
+ */
+export function cleanLinePrefix(line: string): string {
+  return line.replace(/^(\d+[\.\)]|\*|•|-)\s+/, "").trim();
+}
+
+export function parseSingleLine(rawText: string, now = new Date()): Command {
   const trimmed = rawText.trim();
   if (!trimmed) return { kind: "help" };
 
@@ -82,6 +90,102 @@ export function parseMessage(rawText: string, now = new Date()): Command {
   if (hasAmount) return parseLog(tokens, originalTokens, norm, now);
 
   return { kind: "unknown" };
+}
+
+export function parseMessage(rawText: string, now = new Date()): Command {
+  const trimmed = rawText.trim();
+  if (!trimmed) return { kind: "help" };
+
+  const rawLines = trimmed.split(/\r?\n/);
+  const nonEmptyLines: string[] = [];
+
+  for (const raw of rawLines) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#") || line.startsWith("//")) continue;
+    nonEmptyLines.push(cleanLinePrefix(line));
+  }
+
+  if (nonEmptyLines.length === 0) return { kind: "help" };
+
+  if (nonEmptyLines.length === 1 && nonEmptyLines[0]) {
+    return parseSingleLine(nonEmptyLines[0], now);
+  }
+
+  // Multiple lines: check if all are log commands
+  const commands: LogCommand[] = [];
+  for (const line of nonEmptyLines) {
+    const cmd = parseSingleLine(line, now);
+    if (cmd.kind === "log") {
+      commands.push(cmd);
+    } else {
+      return { kind: "unknown" };
+    }
+  }
+
+  return { kind: "batch_log", commands };
+}
+
+export type MultiLineResult =
+  | { kind: "batch_log"; commands: LogCommand[] }
+  | { kind: "command"; command: Command }
+  | { kind: "error"; message: string };
+
+/**
+ * Parses single or multi-line messages with detailed line-by-line feedback.
+ * If all valid lines are transaction log entries, returns a batch_log.
+ * If a single command is passed, returns that command.
+ * If multiple lines are sent and some fail validation, returns an informative error.
+ */
+export function parseMultiLineMessage(rawText: string, now = new Date()): MultiLineResult {
+  const trimmed = rawText.trim();
+  if (!trimmed) return { kind: "command", command: { kind: "help" } };
+
+  const rawLines = trimmed.split(/\r?\n/);
+  const activeLines: { text: string; lineNum: number }[] = [];
+
+  rawLines.forEach((raw, idx) => {
+    const line = raw.trim();
+    if (!line || line.startsWith("#") || line.startsWith("//")) return;
+    activeLines.push({ text: cleanLinePrefix(line), lineNum: idx + 1 });
+  });
+
+  if (activeLines.length === 0) {
+    return { kind: "command", command: { kind: "help" } };
+  }
+
+  // Single line
+  if (activeLines.length === 1 && activeLines[0]) {
+    const singleCmd = parseSingleLine(activeLines[0].text, now);
+    if (singleCmd.kind === "log") {
+      return { kind: "batch_log", commands: [singleCmd] };
+    }
+    return { kind: "command", command: singleCmd };
+  }
+
+  // Multiple lines
+  const commands: LogCommand[] = [];
+  const errors: string[] = [];
+
+  activeLines.forEach(({ text, lineNum }) => {
+    const cmd = parseSingleLine(text, now);
+    if (cmd.kind === "log") {
+      commands.push(cmd);
+    } else {
+      errors.push(`• Line ${lineNum} ("${text}"): could not detect amount or valid transaction format.`);
+    }
+  });
+
+  if (errors.length > 0) {
+    return {
+      kind: "error",
+      message:
+        `⚠️ Could not parse all transaction lines:\n` +
+        errors.join("\n") +
+        `\n\n*Example format:*\n-5000 food\n-2000 taxi\n+15000 salary`
+    };
+  }
+
+  return { kind: "batch_log", commands };
 }
 
 function parseRecent(tokens: string[]): Command {

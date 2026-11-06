@@ -1,8 +1,19 @@
 import { executeCommand } from "./commands";
 import { linkPhoneNumberWithCode, resolveUid, toE164 } from "./identity";
-import { getCurrency } from "./ledger";
-import { parseMessage } from "./parser";
+import { computeBalance, createTransaction, getCurrency } from "./ledger";
+import { parseMessage, parseMultiLineMessage } from "./parser";
 import { parseReceiptImage, parseVoiceNote } from "./gemini";
+import {
+  clearPendingConfirmation,
+  formatConfirmationPrompt,
+  formatExecutedSummary,
+  getPendingConfirmation,
+  isCancelToken,
+  isConfirmToken,
+  setPendingConfirmation,
+  stageTransactions
+} from "./confirmation";
+import type { LogCommand } from "./types";
 
 export interface InboundMessage {
   from: string;
@@ -14,7 +25,7 @@ export interface InboundMessage {
 /**
  * Turn one inbound WhatsApp message into a reply string.
  * Resolves the sender to a Moniilog account, parses text, receipts, or voice notes,
- * and executes the resulting ledger command.
+ * provides confirmation flows for staged transactions, and executes resulting commands.
  */
 export async function handleMessage(message: InboundMessage): Promise<string> {
   const e164 = toE164(message.from);
@@ -22,7 +33,7 @@ export async function handleMessage(message: InboundMessage): Promise<string> {
   try {
     const rawText = message.text?.trim() ?? "";
 
-    // Check if the user is attempting to link their phone number via a 6-digit code
+    // 0. Check if the user is attempting to link their phone number via a 6-digit code
     const linkMatch = rawText.match(/^link\s+(\d{6})$/i);
     if (linkMatch && linkMatch[1]) {
       const result = await linkPhoneNumberWithCode(linkMatch[1], e164);
@@ -40,7 +51,7 @@ export async function handleMessage(message: InboundMessage): Promise<string> {
       if (!receipt) {
         return "📸 Received image, but could not detect a valid receipt or total amount. Please ensure the receipt is legible and try again.";
       }
-      const reply = await executeCommand(uid, currency, {
+      const logCmd: LogCommand = {
         kind: "log",
         type: "expense",
         amount: receipt.amount,
@@ -48,9 +59,15 @@ export async function handleMessage(message: InboundMessage): Promise<string> {
         categoryToken: receipt.category ?? null,
         accountHint: null,
         transactionDate: new Date().toISOString(),
-        description: receipt.note || "Receipt expense",
+        description: receipt.note || "Receipt expense"
+      };
+      const staged = await stageTransactions(uid, currency, [logCmd]);
+      setPendingConfirmation(uid, {
+        transactions: staged,
+        currency,
+        createdAt: Date.now()
       });
-      return `🧾 *Receipt Processed!*\n${reply}`;
+      return `🧾 *Receipt Detected!*\n\n${formatConfirmationPrompt(staged, currency)}`;
     }
 
     // 2. Process Voice Note Audio
@@ -63,7 +80,7 @@ export async function handleMessage(message: InboundMessage): Promise<string> {
         return await executeCommand(uid, currency, { kind: voice.queryType as never });
       }
       if (voice.amount) {
-        const reply = await executeCommand(uid, currency, {
+        const logCmd: LogCommand = {
           kind: "log",
           type: voice.type === "income" ? "income" : "expense",
           amount: voice.amount,
@@ -71,15 +88,90 @@ export async function handleMessage(message: InboundMessage): Promise<string> {
           categoryToken: voice.category ?? null,
           accountHint: null,
           transactionDate: new Date().toISOString(),
-          description: voice.note ?? "Voice note transaction",
+          description: voice.note ?? "Voice note transaction"
+        };
+        const staged = await stageTransactions(uid, currency, [logCmd]);
+        setPendingConfirmation(uid, {
+          transactions: staged,
+          currency,
+          createdAt: Date.now()
         });
-        return `🎙️ *Voice Note Transcribed!*\n${reply}`;
+        return `🎙️ *Voice Note Transcribed!*\n\n${formatConfirmationPrompt(staged, currency)}`;
       }
     }
 
-    // 3. Process Text Message
-    const command = parseMessage(rawText);
-    return await executeCommand(uid, currency, command);
+    // 3. Check Pending Confirmation
+    const pending = getPendingConfirmation(uid);
+
+    if (pending) {
+      // 3a. User Confirmed
+      if (isConfirmToken(rawText)) {
+        clearPendingConfirmation(uid);
+        for (const tx of pending.transactions) {
+          await createTransaction(uid, {
+            type: tx.type,
+            amount: tx.amount,
+            accountId: tx.accountId,
+            categoryId: tx.categoryId,
+            description: tx.description,
+            transactionDate: tx.transactionDate
+          });
+        }
+        const newBalance = await computeBalance(uid);
+        return formatExecutedSummary(pending.transactions, currency, newBalance);
+      }
+
+      // 3b. User Cancelled
+      if (isCancelToken(rawText)) {
+        clearPendingConfirmation(uid);
+        return "❌ *Transaction cancelled.* Nothing was saved.";
+      }
+
+      // 3c. User asks a query (balance, spent, summary, recent, help)
+      const parsedSingle = parseMessage(rawText);
+      if (["balance", "spent", "summary", "recent", "help"].includes(parsedSingle.kind)) {
+        const queryResult = await executeCommand(uid, currency, parsedSingle);
+        return (
+          `${queryResult}\n\n` +
+          `━━━━━━━━━━━━━━━\n` +
+          `📌 *Pending Confirmation:*\n` +
+          `You have ${pending.transactions.length} transaction(s) waiting to be saved.\n` +
+          `Reply *YES* (or *1*) to save, or *NO* (or *cancel*) to discard.`
+        );
+      }
+    }
+
+    // 4. Process Multi-Line or Single Text Message
+    const parsed = parseMultiLineMessage(rawText);
+
+    if (parsed.kind === "error") {
+      return parsed.message;
+    }
+
+    if (parsed.kind === "batch_log") {
+      const staged = await stageTransactions(uid, currency, parsed.commands);
+      const hadPrevious = !!pending;
+      setPendingConfirmation(uid, {
+        transactions: staged,
+        currency,
+        createdAt: Date.now()
+      });
+      return formatConfirmationPrompt(staged, currency, { replaced: hadPrevious });
+    }
+
+    // 5. Unrecognized input while confirmation is pending
+    if (pending && parsed.kind === "command" && parsed.command.kind === "unknown") {
+      return (
+        `❓ *Confirmation Needed*\n\n` +
+        `You have ${pending.transactions.length} transaction(s) awaiting confirmation.\n\n` +
+        `• Reply *YES* (or *1*) to save.\n` +
+        `• Reply *NO* (or *cancel*) to discard.\n` +
+        `• Or send new transaction line(s) to replace.`
+      );
+    }
+
+    // 6. Non-log command execution (balance, help, undo, edit, etc.)
+    return await executeCommand(uid, currency, parsed.command);
   } catch (error) {
     console.error(`Failed handling message from ${e164}`, error);
     return "⚠️ Something went wrong on our side. Please try again in a moment.";
