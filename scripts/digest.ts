@@ -56,3 +56,4 @@ async function generateDailyDigests(): Promise<void> {
 }
 
 generateDailyDigests().catch(console.error);
+
