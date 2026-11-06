@@ -17,11 +17,12 @@
 ---
 
 ## 2. Current / In-Progress Tasks
-- [ ] **BOT-008: End-to-End WhatsApp-to-App Sync Test**: Verify transaction logged in WhatsApp chat immediately triggers realtime sync to Mobile and Web.
-- [ ] **BOT-009: Automated Daily Evening Digest**: Configure scheduled cron script to send daily spending summary to opted-in WhatsApp users.
+- [ ] **BOT-008: Multi-Line Transaction Parsing & Interactive Confirmation**: Parse 1 or more lines in a single WhatsApp message into individual transactions, calculate additions/totals, present a review prompt, and require user confirmation (Yes/No) before saving to the database.
+- [ ] **BOT-009: End-to-End WhatsApp-to-App Sync Test**: Verify transaction logged in WhatsApp chat immediately triggers realtime sync to Mobile and Web.
+- [ ] **BOT-010: Automated Daily Evening Digest**: Configure scheduled cron script to send daily spending summary to opted-in WhatsApp users.
 
 ---
 
 ## 3. Proposed Upcoming Tasks (Pending Approval)
-- [ ] **BOT-010: 24/7 Cloud Deployment**: Dockerize and deploy bot container to Railway, Render, or VPS for uninterrupted uptime.
-- [ ] **BOT-011: Multi-Currency Message Parsing**: Detect and parse multiple currency symbols/codes in incoming messages.
+- [ ] **BOT-011: 24/7 Cloud Deployment**: Dockerize and deploy bot container to Railway, Render, or VPS for uninterrupted uptime.
+- [ ] **BOT-012: Multi-Currency Message Parsing**: Detect and parse multiple currency symbols/codes in incoming messages.
